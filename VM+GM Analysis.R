@@ -105,8 +105,6 @@ vaginal.data <- vaginal.data %>%
          vaginal_sampleID = SampleID
   )
 
-View(vaginal.data)
-
 
 gut.data <- gut.data %>% 
   select(-c(X)) %>% 
@@ -115,6 +113,8 @@ gut.data <- gut.data %>%
          gut_OTU = OTU,
          gut_sampleID = SampleID)
 
+View(gut.data)
+
 cross.df <- vaginal.data %>% 
   left_join(gut.data) %>% 
   filter(!is.na(gut_shannon))
@@ -122,13 +122,180 @@ cross.df <- vaginal.data %>%
 names(cross.df)
 dim(cross.df)
 
+View(cross.df)
 
+##################################################
+#creating a scatterplot of shannon diversity correlation between vaginal and gut per person
+plot(x = cross.df$vaginal_shannon, y = cross.df$gut_shannon,
+     main = "Average Shannnon Diversity Correlation",
+     xlab = "Vaginal Microbiome",
+     ylab = "Gut Microbiome",
+     pch = 16)           
 
+?abline
 
+spline_fit <- smooth.spline(cross.df$vaginal_shannon, cross.df$gut_shannon)
+lines(spline_fit, col = "blue", lwd = 2)
 
+###################################################
+#replicating Alice's analysis
+vag.bacterial.data <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal_cleaned_max_taxa.rds")
+gut.bacterial.data <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/fecal_cleaned_max_taxa.rds")
 
+vag_ids_to_keep <- cross.df$vaginal_sampleID
+gut_ids_to_keep <- cross.df$gut_sampleID
 
+# Subset the phyloseq dfs
+vag.bacterial.subset <- prune_samples(vag_ids_to_keep, vag.bacterial.data)
+gut.bacterial.subset <- prune_samples(gut_ids_to_keep, gut.bacterial.data)
 
+# metadata df
+vag.meta <- sample_data(vag.bacterial.subset)
+gut.meta <- sample_data(gut.bacterial.subset)
+
+# merge bacterial data of sites
+merge.site.bacterial <- merge_phyloseq(vag.bacterial.subset, gut.bacterial.subset)
+
+# bray curtis distance of pairs (beta diversity)
+bray_dist <- phyloseq::distance(merge.site.bacterial, method = "bray")
+
+class(bray_dist)
+
+bray_df <- as.matrix(bray_dist) %>%
+  as.data.frame() %>%
+  rownames_to_column("Sample1") %>%
+  pivot_longer(-Sample1, names_to = "Sample2", values_to = "bray") %>%
+  filter(Sample1 < Sample2) 
+
+# join df
+meta <- as(sample_data(merge.site.bacterial), "data.frame") %>% 
+  select(biome_id, SampleID, logDate, sampleType)
+bray_meta <- bray_df %>%
+  left_join(meta, by = c("Sample1" = "SampleID")) %>%
+  rename(biome_id_1 = biome_id, site1 = sampleType, logDate_1 = logDate) %>%
+  left_join(meta, by = c("Sample2" = "SampleID")) %>%
+  rename(biome_id_2 = biome_id, site2 = sampleType, logDate_2 = logDate)
+
+# Filter to within-person, cross-site comparisons
+bray_cross_site <- bray_meta %>%
+  filter(biome_id_1 == biome_id_2,
+         site1 != site2,
+         logDate_1 == logDate_2)
+# Join meta data
+bray_cross_site.full <- bray_cross_site %>% 
+  left_join(cross.df, by = c("logDate_1" = "logDate", "biome_id_1" = "biome_id"))
+names(bray_cross_site.full)
+
+colnames(bray_cross_site.full)
+
+# gut vs vaginal Shannon
+ggplot(bray_cross_site.full, aes(x = vaginal_shannon, y = gut_shannon, col=as.factor(biome_id_1))) +
+  geom_point(alpha = 0.6) +
+  # geom_smooth(method = "loess", se = FALSE) +
+  geom_smooth(method = "loess", se = FALSE, color="blue") +
+  labs(
+    x = "Vaginal Shannon Diversity",
+    y = "Gut Shannon Diversity",
+    title = " "
+  ) +
+  theme_minimal() +
+  ylim(0,5)+
+  theme(axis.text.x = element_text(angle = 0, hjust = 1, vjust=0),
+        text=element_text(size=16),
+        legend.position="none")
+
+cor.test(bray_cross_site.full$vaginal_shannon, 
+         bray_cross_site.full$gut_shannon, use = "complete.obs")
+
+## Bray
+
+# Beta Diversity Between Gut and Vaginal Microbiomes pairs
+ggplot(bray_cross_site.full, aes(x = as.factor(biome_id_1), y = bray)) +
+  geom_boxplot(outlier.alpha = 0.3) +
+  geom_jitter(width = 0.2, alpha = 0.5, color = "steelblue") +
+  labs(
+    x = "Participant ID",
+    y = "Bray-Curtis Dissimilarity (Gut vs Vaginal)",
+    title = " "
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5),
+        text = element_text(size = 14))
+
+View(bray_cross_site.full)
+dim(bray_cross_site.full)
+
+# Cross-site Bray-Curtis by CST
+ggplot(bray_cross_site.full, aes(x = CST, y = bray, fill = CST)) +
+  geom_boxplot() +
+  geom_jitter(color="steelblue", width = 0.2, alpha = 0.5) +
+  labs(
+    x = "CST",
+    y = "Bray-Curtis Dissimilarity",
+    title = ""
+  ) +
+  theme_minimal() +
+  scale_fill_viridis_d() +
+  theme(text = element_text(size = 14)) +
+  guides(fill = guide_legend(title = "CST"))
+
+## Edit df
+bray_cross_site.full.filtered <- bray_cross_site.full %>% 
+  select(-c(Sample1, Sample2, logDate_2, biome_id_2, site1, site2, vaginal_sampleID, gut_sampleID)) %>% 
+  rename(logDate = logDate_1,
+         biome_id = biome_id_1)
+colSums(is.na(bray_cross_site.full.filtered))
+
+bray_cross_site.full.filtered <- bray_cross_site.full.filtered %>% 
+  mutate(stress_severity = case_when(
+    stress_score <= 14 ~ "Normal",
+    stress_score >= 15 & stress_score <= 18 ~ "Mild",
+    stress_score >= 19 & stress_score <= 25 ~ "Moderate",
+    stress_score >= 26 & stress_score <= 33 ~ "Severe",
+    stress_score >= 34 ~ "Extremely Severe",
+    TRUE ~ NA_character_
+  )) %>% 
+  select(-stress_score)
+colSums(is.na(bray_cross_site.full.filtered))
+
+# filter all NA cols and all NA rows
+bray_cross_site.full.filtered <- bray_cross_site.full.filtered %>%
+  select(where(~ !all(is.na(.)))) %>%
+  filter(if_any(everything(), ~ !is.na(.))) 
+dim(bray_cross_site.full.filtered)
+colSums(is.na(bray_cross_site.full.filtered))
+
+################################################################
+#this part I did not understand what gut vs. vaginal bray between-person is
+
+# bray_combined <- bind_rows(
+#   bray_cross_site %>% mutate(comparison = "within-person"),
+#   bray_meta %>%
+#     filter(biome_id_1 != biome_id_2, site1 != site2, logDate_1 == logDate_2) %>%
+#     mutate(comparison = "between-person")
+# )
+# 
+# # Plot with a side-by-side boxplot
+# ggplot(bray_combined, aes(x = comparison, y = bray, fill = comparison)) +
+#   geom_boxplot(alpha = 0.7) +
+#   # geom_jitter(color="orchid", alpha=0.3) +
+#   labs(x = "", y = "Bray-Curtis Dissimilarity", title = "Cross-site Dissimilarity (Gut vs Vaginal)") +
+#   scale_fill_manual(values = c("within-person" = "#1f77b4", "between-person" = "#ff7f0e")) +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 0, hjust = 0.5, vjust=0.5),
+#         text=element_text(size=16))
+# 
+# #violin plot
+# ggplot(bray_combined, aes(x = comparison, y = bray, fill = comparison)) +
+#   geom_violin(alpha = 0.7) +
+#   geom_boxplot(width = 0.1, alpha = 0.3) + 
+#   labs(x = "", y = "Bray-Curtis Dissimilarity", title = "Cross-site Dissimilarity (Gut vs Vaginal)") +
+#   scale_fill_manual(values = c("within-person" = "#1f77b4", "between-person" = "#ff7f0e")) +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+#         text=element_text(size=16))
+
+################################################################
 
 
 
