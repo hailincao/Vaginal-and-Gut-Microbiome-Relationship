@@ -156,6 +156,10 @@ gut.meta <- sample_data(gut.bacterial.subset)
 # merge bacterial data of sites
 merge.site.bacterial <- merge_phyloseq(vag.bacterial.subset, gut.bacterial.subset)
 
+View(merge.site.bacterial)
+head(tax_table(merge.site.bacterial))
+colnames(tax_table(merge.site.bacterial))
+
 # bray curtis distance of pairs (beta diversity)
 bray_dist <- phyloseq::distance(merge.site.bacterial, method = "bray")
 
