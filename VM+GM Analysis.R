@@ -119,8 +119,74 @@ cross.df <- vaginal.data %>%
   left_join(gut.data) %>% 
   filter(!is.na(gut_shannon))
 
+View(cross.df)
+
 names(cross.df)
 dim(cross.df)
+
+#exploring gut microbiome in each vaginal CST
+CST_Gut <- cross.df %>%
+  group_by(CST, gut_OTU) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(CST) %>%
+  mutate(total_samples = sum(count),
+         percentage = count / total_samples * 100) %>%
+  arrange(CST, desc(count))
+
+topspecies <- CST_Gut %>%
+  group_by(CST) %>%
+  slice_max(count, n = 5)
+
+print(topspecies) #the top 5 abundant species
+
+#plotting them on a bar plot
+ggplot(topspecies, 
+       aes(x = reorder(gut_OTU, -percentage), y = percentage, fill = CST)) +
+  geom_col() +
+  facet_wrap(~ CST, scales = "free_x") +  
+  labs(x = "Top Gut Species", y = "Percentage per CST", 
+       title = "Top 5 Gut Species by Vaginal CST") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+
+top1species <- CST_Gut %>%
+  group_by(CST) %>%
+  slice_max(count, n = 1)
+
+print(top1species)
+
+ggplot(top1species, aes(x = reorder(CST, -count), y = count, fill = gut_OTU)) +
+  geom_col() +
+  geom_text(aes(label = gut_OTU), 
+            position = position_stack(vjust = 0.5), 
+            size = 3, color = "white") +
+  labs(x = "Vaginal CST", y = "Number of Samples", 
+       title = "Most Abundant Gut Species by Vaginal CST") +
+  theme_minimal() +
+  theme(legend.position = "none") 
+
+table(cross.df$CST)
+cst_totals <- c(I = 220, II = 27, III = 61, IV = 23, V = 13)
+
+top1species <- top1species %>%
+  mutate(total_samples = cst_totals[CST])
+
+ggplot(top1species, aes(x = reorder(CST, -count), y = count, fill = gut_OTU)) +
+  geom_col() +
+  geom_text(aes(y = 0, label = paste0("n=", total_samples)),
+            vjust = 1.2, color = "black", size = 3.5) +
+  geom_text(aes(label = gut_OTU),
+            position = position_stack(vjust = 0.5),
+            color = "white", size = 3.5) +
+  geom_text(aes(label = count), vjust = -0.5, size = 3.5) +
+  labs(x = "Vaginal CST", y = "Count of Top Gut Species",
+       title = "Most Abundant Gut Species by Vaginal CST") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 11))
+
+
 
 #View(cross.df)
 
