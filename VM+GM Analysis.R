@@ -113,7 +113,7 @@ gut.data <- gut.data %>%
          gut_OTU = OTU,
          gut_sampleID = SampleID)
 
-View(gut.data)
+#View(gut.data)
 
 cross.df <- vaginal.data %>% 
   left_join(gut.data) %>% 
@@ -122,7 +122,7 @@ cross.df <- vaginal.data %>%
 names(cross.df)
 dim(cross.df)
 
-View(cross.df)
+#View(cross.df)
 
 ##################################################
 #creating a scatterplot of shannon diversity correlation between vaginal and gut per person
@@ -156,9 +156,10 @@ gut.meta <- sample_data(gut.bacterial.subset)
 # merge bacterial data of sites
 merge.site.bacterial <- merge_phyloseq(vag.bacterial.subset, gut.bacterial.subset)
 
-View(merge.site.bacterial)
+#View(merge.site.bacterial)
 head(tax_table(merge.site.bacterial))
 colnames(tax_table(merge.site.bacterial))
+colnames(sample_data(merge.site.bacterial))
 
 # bray curtis distance of pairs (beta diversity)
 bray_dist <- phyloseq::distance(merge.site.bacterial, method = "bray")
@@ -226,7 +227,7 @@ ggplot(bray_cross_site.full, aes(x = as.factor(biome_id_1), y = bray)) +
   theme(axis.text.x = element_text(angle = 0, vjust = 0.5),
         text = element_text(size = 14))
 
-View(bray_cross_site.full)
+#View(bray_cross_site.full)
 dim(bray_cross_site.full)
 
 # Cross-site Bray-Curtis by CST
