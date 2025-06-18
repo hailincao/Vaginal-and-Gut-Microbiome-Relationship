@@ -5,100 +5,15 @@ library(Matrix)
 library(readxl) 
 
 # #replicating Alice's code
-# 
-# bacterial.data <- readRDS("/Users/caoyang/Desktop/Tetel Lab/Walther-Antonio_Project_022_ITS2.rds")
-# samples.data <- read_excel("/Users/caoyang/Desktop/Tetel Lab/cleaned_samplesv2.xlsx") #changing original code's sample data into version 2
-# uminn_data <- read.csv("/Users/caoyang/Desktop/Tetel Lab/datasets/cleaned_uminn_data.csv", header=TRUE)                   
-# 
-# bacterial_otu_table <- otu_table(bacterial.data)
-# bacterial_tax_table <- tax_table(bacterial.data)
-# 
-# dim(samples.data)
-# length(unique(samples.data$biome_id))
-# dim(uminn_data)
-# 
-# ## Metadata
-# uminn_data <- uminn_data %>% 
-#   select(Sample.ID, Special.Notes) %>% 
-#   mutate(qr=sub("_.*", "", Sample.ID))
-# 
-# metadata_bacteria <- data.frame(
-#   SampleID = sample_names(bacterial_otu_table),
-#   is_blank = grepl("BLANK", colnames(bacterial_otu_table)),
-#   stringsAsFactors = FALSE) %>%
-#   mutate(qr = sub("\\_.*", "", SampleID))
-# 
-# metadata_bacteria <- metadata_bacteria %>% 
-#   left_join(samples.data, by="qr")
-# rownames(metadata_bacteria) <- metadata_bacteria$SampleID
-# 
-# 
-# dupes <- names(table(metadata_bacteria$SampleID))[table(metadata_bacteria$SampleID) > 1]
-# # [1] "S1519_2_V3V5_S1487"       "S1519_V3V5_S1199"         "S1587_2_V3V5_S1535"      
-# # [4] "S1587_V3V5_S1247"         "S2558_2_V3V5_S1499"       "S2558_V3V5_S1211"        
-# # [7] "S3244_2_V3V5_S1475"       "S3244_V3V5_S1187"         "S3791_2_V3V5_S1511"      
-# # [10] "S3791_V3V5_S1223"         "S3977_2_V3V5_S1523"       "S3977_V3V5_S1235"        
-# # [13] "S4495_loose_2_V3V5_S1547" "S4495_loose_V3V5_S1259" 
-# 
-# # Set sample data
-# sample_data_obj <- sample_data(metadata_bacteria)
-# 
-# ## Saving as new obj
-# bacteria_physeq <- phyloseq(bacterial_otu_table, sample_data_obj, bacterial_tax_table)
-# table(metadata_bacteria$is_blank)
-# 
-# bacteria_physeq_otu <- otu_table(bacteria_physeq)
-# 
-# ## Filter out error data - filter samples
-# uminn_data_keep <- uminn_data %>% 
-#   filter(str_detect(Special.Notes, "error") | str_detect(Special.Notes, "No swab in tube")) %>% 
-#   select(Sample.ID, Special.Notes, qr)
-# otu_table_bacteria <- as.data.frame(t(bacteria_physeq_otu))
-# dim(otu_table_bacteria) # 3659 122403
-# 
-# sample_ids <- rownames(otu_table_bacteria)
-# sample_ids <- sub("_.*", "", sample_ids)
-# length(sample_ids) # 3659
-# 
-# # Prune samples that had errors
-# samples_to_keep <- !sample_ids %in% uminn_data_keep$qr
-# 
-# t_bacterial_otu_table <- t(bacterial_otu_table)
-# physeq_no_error <- prune_samples(samples_to_keep, t_bacterial_otu_table)
-# 
-# # Prep for decontam
-# physeq_no_error_otu <- otu_table(physeq_no_error)
-# physeq_no_error_otu_df <- as.data.frame(physeq_no_error_otu)
-# 
-# # Save new obj
-# # save.image("/Volumes/T7/microbiome_data/R_environments/microbiome_cleaningv1.RData")
-# # load("/Volumes/T7/microbiome_data/R_environments/microbiome_cleaningv1.RData")
-# 
-# # Sample data
-# metadata_bacteria <- data.frame(
-#   SampleID = rownames(physeq_no_error_otu_df),
-#   is_blank = grepl("BLANK", rownames(physeq_no_error_otu_df)),
-#   stringsAsFactors = FALSE
-# ) %>%
-#   mutate(qr = sub("\\_.*", "", SampleID))
-# metadata_bacteria <- metadata_bacteria %>% 
-#   left_join(samples.data, by="qr")
-# rownames(metadata_bacteria) <- metadata_bacteria$SampleID
-# 
-# # Convert back to phyloseq obj
-# otu_table_obj <- otu_table(physeq_no_error_otu_df, taxa_are_rows = FALSE)
-# sample_data_obj <- sample_data(metadata_bacteria)
-# 
-# 
-# ## Saving as new obj
-# bacteria_physeq <- phyloseq(otu_table_obj, sample_data_obj, bacterial_tax_table)
-# 
-# # Save new obj
-# saveRDS(bacteria_physeq, file = "/Users/caoyang/Desktop/Tetel Lab/datasets/bacteria_intermediary2.rds")
 
 #importing cleaned bacteria data
 VagData <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal_bacteria_filter2_cleanedv3.rds")
 GutData <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/fecal_bacteria_cleanedv3.rds")
+
+
+
+# bacterial.data <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal_cleaned_max_taxa.rds")
+# head(otu_table(bacterial.data))
 
 
 gut.data <- read.csv("/Users/caoyang/Desktop/Tetel Lab/datasets/gut.lifestyle.merged.csv")
@@ -111,7 +26,6 @@ vaginal.data <- vaginal.data %>%
          vaginal_OTU = OTU,
          vaginal_sampleID = SampleID
   )
-
 
 gut.data <- gut.data %>% 
   select(-c(X)) %>% 
@@ -126,10 +40,89 @@ cross.df <- vaginal.data %>%
   left_join(gut.data) %>% 
   filter(!is.na(gut_shannon))
 
-View(cross.df)
 
-names(cross.df)
-dim(cross.df)
+#View(cross.df)
+
+# samp <- data.frame(sample_data(VagData))
+# sum(samp$SampleID %in% cross.df$vaginal_sampleID)
+# # merge(samp, cross.df, by.x="SampleID", by.y="vaginal_sampleID")
+# merged_df <- samp %>% 
+#   left_join(as.data.frame(cross.df), by = c("SampleID" = "vaginal_sampleID"))
+# colnames(merged_df)
+# 
+# #merged cross.df(what Alice have cleaned) back to the VagData file
+# merged_df <- as.data.frame(merged_df)
+# rownames(merged_df) <- merged_df$SampleID
+# new_sample_data <- phyloseq::sample_data(merged_df)
+# sample_data(VagData) <- new_sample_data
+# head(sample_data(VagData))
+
+samp <- data.frame(sample_data(VagData))
+matched_samples <- samp$SampleID[samp$SampleID %in% cross.df$vaginal_sampleID]
+length(matched_samples)
+VagData <- prune_samples(matched_samples, VagData)
+merged_df <- data.frame(sample_data(VagData)) %>%
+  left_join(data.frame(cross.df), 
+            by = c("SampleID" = "vaginal_sampleID"))
+rownames(merged_df) <- merged_df$SampleID
+sample_data(VagData) <- sample_data(merged_df)
+head(sample_data(VagData))
+nsamples(VagData)
+
+#removing duplicating columns
+samp_df <- as.data.frame(sample_data(VagData))
+duplicate_cols <- sapply(samp_df, function(x) any(duplicated(as.list(samp_df))))
+samp_df[, duplicate_cols]
+
+dup_content <- duplicated(as.list(samp_df))
+samp_df_clean <- samp_df[, !dup_content]
+
+#putting the cleaned columns back to the phyloseq
+rownames(samp_df_clean) <- samp_df_clean$SampleID
+sample_data(VagData) <- sample_data(samp_df_clean)
+
+#verifying
+colnames(sample_data(VagData))
+
+#cleaning the name
+samp_df <- as.data.frame(sample_data(VagData))
+colnames(samp_df) <- gsub("\\.x$", "", colnames(samp_df)) 
+colnames(samp_df)
+rownames(samp_df) <- samp_df$SampleID
+sample_data(VagData) <- sample_data(samp_df)
+colnames(sample_data(VagData))
+
+#relative abundance
+vaginal_phyloseq_rel <- transform_sample_counts(VagData, function(x) x / sum(x))
+
+#add Lactobacillus rel. abundance to sample data
+Lacto_phy <- subset_taxa(vaginal_phyloseq_rel, Genus == "Lactobacillus")
+Lacto_abund <- rowSums( otu_table(Lacto_phy)[ , , drop = FALSE ] )
+sample_data(vaginal_phyloseq_rel)$Lacto_abundance_Vag <- Lacto_abund[ sample_names(vaginal_phyloseq_rel) ]
+
+colnames(sample_data(vaginal_phyloseq_rel))
+
+
+#how Lacto abundance fluctuate over time in each CST
+meta_df <- data.frame(sample_data(vaginal_phyloseq_rel)) %>%
+  select(SampleID, timestamp, CST, Lacto_abundance_Vag)
+
+meta_df$timestamp <- as.Date(meta_df$timestamp)
+
+meta_df <- meta_df %>%
+  filter(!is.na(CST), !is.na(Lacto_abundance_Vag), !is.na(timestamp))
+
+ggplot(meta_df, aes(x = timestamp, y = Lacto_abundance_Vag, color = CST)) +
+  geom_point(alpha = 0.6) +  # Scatter plot
+  geom_smooth(method = "loess", se = FALSE) +  # Trend line
+  labs(
+    title = "Lactobacillus Abundance (Vaginal) Over Time by CST",
+    x = "Time",
+    y = "Lacto_abundance_Vag"
+  ) +
+  theme_minimal() +
+  facet_wrap(~CST, scales = "free_y")  # Separate plots per CST
+
 
 #exploring gut microbiome in each vaginal CST
 CST_Gut <- cross.df %>%
@@ -192,6 +185,125 @@ ggplot(top1species, aes(x = reorder(CST, -count), y = count, fill = gut_OTU)) +
   theme_minimal() +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 45, hjust = 1, size = 11))
+
+#how lacto fluctuate in gut
+samp2 <- data.frame(sample_data(GutData))
+matched_samples <- samp2$SampleID[samp2$SampleID %in% cross.df$gut_sampleID]
+length(matched_samples)
+GutData <- prune_samples(matched_samples, GutData)
+otu_table(GutData) <- otu_table(t(otu_table(GutData)))
+merged_df <- data.frame(sample_data(GutData)) %>%
+  left_join(data.frame(cross.df), 
+            by = c("SampleID" = "gut_sampleID"))
+rownames(merged_df) <- merged_df$SampleID
+sample_data(GutData) <- sample_data(merged_df)
+colnames(sample_data(GutData))
+nsamples(GutData)
+#View(sample_data(GutData))
+
+#removing duplicating columns
+samp_df <- data.frame(sample_data(GutData))
+samp_df_clean <- samp_df %>% 
+  select(SampleID, is_blank, qr, biome_id.x, logDate.x, timestamp, sampleType, CST.y, vaginal_shannon.y)
+rownames(samp_df_clean) <- samp_df_clean$SampleID
+sample_data(GutData) <- sample_data(samp_df_clean)
+
+#View(sample_data(GutData))
+colnames(sample_data(GutData)) 
+
+samp_df <- data.frame(sample_data(GutData))
+colnames(samp_df) <- gsub("\\.x$|\\.y$", "", colnames(samp_df))
+#samp_df <- samp_df[, !duplicated(colnames(samp_df))]
+rownames(samp_df) <- samp_df$SampleID
+sample_data(GutData) <- sample_data(samp_df)
+colnames(sample_data(GutData))
+
+
+#View(otu_table(GutData))
+
+#relative abundance
+gut_phyloseq_rel <- transform_sample_counts(GutData, function(x) x / sum(x))
+
+#add Lactobacillus rel. abundance to sample data
+Lacto_phy <- subset_taxa(gut_phyloseq_rel, Genus == "Lactobacillus")
+Lacto_abund <- rowSums( otu_table(Lacto_phy)[ , , drop = FALSE ] )
+summary(Lacto_abund)
+sample_data(gut_phyloseq_rel)$Lacto_abundance_Gut <- Lacto_abund[ sample_names(gut_phyloseq_rel) ]
+
+#View((sample_data(gut_phyloseq_rel)))
+colnames(sample_data(gut_phyloseq_rel))
+
+#how Lacto abundance fluctuate over time in each CST
+meta_df <- data.frame(sample_data(gut_phyloseq_rel)) %>%
+  select(SampleID, timestamp, CST, Lacto_abundance_Gut)
+
+meta_df$timestamp <- as.Date(meta_df$timestamp)
+
+meta_df <- meta_df %>%
+  filter(!is.na(CST), !is.na(Lacto_abundance_Gut), !is.na(timestamp))
+
+
+ggplot(meta_df, aes(x = timestamp, y = Lacto_abundance_Gut, color = CST)) +
+  geom_point(alpha = 0.6) +  # Scatter plot
+  geom_smooth(method = "loess", se = FALSE) +  # Trend line
+  labs(
+    title = "Lactobacillus Abundance (Gut) Over Time by CST",
+    x = "Time",
+    y = "Lacto_abundance_Gut"
+  ) +
+  theme_minimal() +
+  facet_wrap(~CST, scales = "free_y")  # Separate plots per CST
+
+#how gut and vaginal lacto correlate with each other in CST 
+vag_meta <- vaginal_phyloseq_rel %>%
+  sample_data() %>%       
+  data.frame() %>%      
+  select(
+    SampleID, 
+    qr,
+    biome_id,
+    CST_vag = CST, 
+    Lacto_abundance_Vag, 
+    logDate
+  )
+
+
+gut_meta <- gut_phyloseq_rel %>%
+  sample_data() %>%       
+  data.frame() %>%      
+  select(
+    SampleID, 
+    qr,
+    biome_id,
+    CST_gut = CST, 
+    Lacto_abundance_Gut, 
+    logDate
+  )
+
+colnames(gut_meta)
+colnames(vag_meta)
+
+merged_df <- left_join(gut_meta, 
+                       vag_meta %>% select(biome_id, qr, logDate, CST_vag, Lacto_abundance_Vag), 
+                       by = c("biome_id","logDate"))
+
+ggplot(merged_df, aes(x = Lacto_abundance_Vag, y = Lacto_abundance_Gut, color = CST_vag)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~CST_vag) +
+  labs(
+    x = "Vaginal Lactobacillus Relative Abundance (%)",
+    y = "Gut Lactobacillus Relative Abundance (%)",
+    title = "Vaginal-Gut Lactobacillus Correlation by CST"
+  ) +
+  theme_bw()
+
+
+
+
+
+
+
 
 
 
