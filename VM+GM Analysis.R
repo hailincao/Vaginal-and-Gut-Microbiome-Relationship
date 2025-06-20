@@ -57,6 +57,8 @@ cross.df <- vaginal.data %>%
 # sample_data(VagData) <- new_sample_data
 # head(sample_data(VagData))
 
+#how lacto fluctuate in vagina
+
 samp <- data.frame(sample_data(VagData))
 matched_samples <- samp$SampleID[samp$SampleID %in% cross.df$vaginal_sampleID]
 length(matched_samples)
@@ -95,6 +97,7 @@ colnames(sample_data(VagData))
 #relative abundance
 vaginal_phyloseq_rel <- transform_sample_counts(VagData, function(x) x / sum(x))
 
+
 #add Lactobacillus rel. abundance to sample data
 Lacto_phy <- subset_taxa(vaginal_phyloseq_rel, Genus == "Lactobacillus")
 Lacto_abund <- rowSums( otu_table(Lacto_phy)[ , , drop = FALSE ] )
@@ -102,23 +105,29 @@ sample_data(vaginal_phyloseq_rel)$Lacto_abundance_Vag <- Lacto_abund[ sample_nam
 
 colnames(sample_data(vaginal_phyloseq_rel))
 
+#add Prevotella to sample data
+Prev_phy <- subset_taxa(vaginal_phyloseq_rel,
+                        Genus %in% c("Prevotella", "Prevotella_7", "Prevotella_9"))
+Prev_abund <- rowSums( otu_table(Prev_phy)[ , , drop = FALSE ] )
+sample_data(vaginal_phyloseq_rel)$Prev_abundance_Vag <- Prev_abund[ sample_names(vaginal_phyloseq_rel) ]
 
-#how Lacto abundance fluctuate over time in each CST
+
+#how Prevotella abundance fluctuate over time in each CST
 meta_df <- data.frame(sample_data(vaginal_phyloseq_rel)) %>%
-  select(SampleID, timestamp, CST, Lacto_abundance_Vag)
+  select(SampleID, timestamp, CST, Prev_abundance_Vag)
 
 meta_df$timestamp <- as.Date(meta_df$timestamp)
 
 meta_df <- meta_df %>%
-  filter(!is.na(CST), !is.na(Lacto_abundance_Vag), !is.na(timestamp))
+  filter(!is.na(CST), !is.na(Prev_abundance_Vag), !is.na(timestamp))
 
-ggplot(meta_df, aes(x = timestamp, y = Lacto_abundance_Vag, color = CST)) +
+ggplot(meta_df, aes(x = timestamp, y = Prev_abundance_Vag, color = CST)) +
   geom_point(alpha = 0.6) +  # Scatter plot
   geom_smooth(method = "loess", se = FALSE) +  # Trend line
   labs(
-    title = "Lactobacillus Abundance (Vaginal) Over Time by CST",
+    title = "Prevotella Abundance (Vaginal) Over Time by CST",
     x = "Time",
-    y = "Lacto_abundance_Vag"
+    y = "Prevotella Relative Abundance"
   ) +
   theme_minimal() +
   facet_wrap(~CST, scales = "free_y")  # Separate plots per CST
@@ -203,8 +212,9 @@ nsamples(GutData)
 
 #removing duplicating columns
 samp_df <- data.frame(sample_data(GutData))
+colnames(samp_df)
 samp_df_clean <- samp_df %>% 
-  select(SampleID, is_blank, qr, biome_id.x, logDate.x, timestamp, sampleType, CST.y, vaginal_shannon.y)
+  select(SampleID, is_blank, qr, biome_id.x, logDate.x, timestamp, sampleType, CST, vaginal_shannon)
 rownames(samp_df_clean) <- samp_df_clean$SampleID
 sample_data(GutData) <- sample_data(samp_df_clean)
 
@@ -230,6 +240,14 @@ Lacto_abund <- rowSums( otu_table(Lacto_phy)[ , , drop = FALSE ] )
 summary(Lacto_abund)
 sample_data(gut_phyloseq_rel)$Lacto_abundance_Gut <- Lacto_abund[ sample_names(gut_phyloseq_rel) ]
 
+#add Prevotella rel.abundance to sample data
+Prev_phy <- subset_taxa(gut_phyloseq_rel,
+                        Genus %in% c("Prevotella", "Prevotella_7", "Prevotella_9"))
+Prev_abund <- rowSums( otu_table(Prev_phy)[ , , drop = FALSE ] )
+summary(Prev_abund)
+sample_data(gut_phyloseq_rel)$Prev_abundance_Gut <- Prev_abund[ sample_names(gut_phyloseq_rel) ]
+
+
 #View((sample_data(gut_phyloseq_rel)))
 colnames(sample_data(gut_phyloseq_rel))
 
@@ -253,6 +271,28 @@ ggplot(meta_df, aes(x = timestamp, y = Lacto_abundance_Gut, color = CST)) +
   ) +
   theme_minimal() +
   facet_wrap(~CST, scales = "free_y")  # Separate plots per CST
+
+#how prevotella abundance fluctuate over time in each CST
+meta_df <- data.frame(sample_data(gut_phyloseq_rel)) %>%
+  select(SampleID, timestamp, CST, Prev_abundance_Gut)
+
+meta_df$timestamp <- as.Date(meta_df$timestamp)
+
+meta_df <- meta_df %>%
+  filter(!is.na(CST), !is.na(Prev_abundance_Gut), !is.na(timestamp))
+
+
+ggplot(meta_df, aes(x = timestamp, y = Prev_abundance_Gut, color = CST)) +
+  geom_point(alpha = 0.6) +  # Scatter plot
+  geom_smooth(method = "loess", se = FALSE) +  # Trend line
+  labs(
+    title = "Prevotella Abundance (Gut) Over Time by CST",
+    x = "Time",
+    y = "Prevotella Relative Abundance"
+  ) +
+  theme_minimal() +
+  facet_wrap(~CST, scales = "free_y")  # Separate plots per CST
+
 
 #how gut and vaginal lacto correlate with each other in CST 
 vag_meta <- vaginal_phyloseq_rel %>%
@@ -298,7 +338,49 @@ ggplot(merged_df, aes(x = Lacto_abundance_Vag, y = Lacto_abundance_Gut, color = 
   ) +
   theme_bw()
 
+#how Prevotella correlate with each other
+vag_meta2 <- vaginal_phyloseq_rel %>%
+  sample_data() %>%       
+  data.frame() %>%      
+  select(
+    SampleID, 
+    qr,
+    biome_id,
+    CST_vag = CST, 
+    Prev_abundance_Vag, 
+    logDate
+  )
 
+
+gut_meta2 <- gut_phyloseq_rel %>%
+  sample_data() %>%       
+  data.frame() %>%      
+  select(
+    SampleID, 
+    qr,
+    biome_id,
+    CST_gut = CST, 
+    Prev_abundance_Gut, 
+    logDate
+  )
+
+colnames(gut_meta2)
+colnames(vag_meta2)
+
+merged_df2 <- left_join(gut_meta2, 
+                       vag_meta2 %>% select(biome_id, qr, logDate, CST_vag, Prev_abundance_Vag), 
+                       by = c("biome_id","logDate"))
+
+ggplot(merged_df2, aes(x = Prev_abundance_Vag, y = Prev_abundance_Gut, color = CST_vag)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~CST_vag) +
+  labs(
+    x = "Vaginal Prevotella Relative Abundance (%)",
+    y = "Gut Prevotella Relative Abundance (%)",
+    title = "Vaginal-Gut Prevotella Correlation by CST"
+  ) +
+  theme_bw()
 
 
 
@@ -316,8 +398,6 @@ plot(x = cross.df$vaginal_shannon, y = cross.df$gut_shannon,
      xlab = "Vaginal Microbiome",
      ylab = "Gut Microbiome",
      pch = 16)           
-
-?abline
 
 spline_fit <- smooth.spline(cross.df$vaginal_shannon, cross.df$gut_shannon)
 lines(spline_fit, col = "blue", lwd = 2)
