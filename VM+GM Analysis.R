@@ -7,41 +7,168 @@ library(readxl)
 # #replicating Alice's code
 
 #importing cleaned bacteria data
-VagData <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal_bacteria_filter2_cleanedv3.rds")
+VagData <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal_bacteria_cleanedv3.rds")
 GutData <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/fecal_bacteria_cleanedv3.rds")
 
+########################################################################
+#cleaning vaginal data
+otu_mat <- VagData %>%
+  otu_table() %>%
+  as("matrix")
 
+# Transpose if taxa are rows
+if (taxa_are_rows(VagData)) {
+  otu_mat <- t(otu_mat)
+}
 
-# bacterial.data <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal_cleaned_max_taxa.rds")
-# head(otu_table(bacterial.data))
+most_abundant_taxa <- apply(otu_mat, 1, function(x) names(x)[which.max(x)])
+tax_mat <- tax_table(VagData) %>% as("matrix")
+most_abundant_species <- paste(
+  tax_mat[most_abundant_taxa, "Genus"],
+  tax_mat[most_abundant_taxa, "Species_exact"]
+)
+sample_data(VagData)$most_abundant_species <- most_abundant_species
 
+species_to_cst <- data.frame(
+  Species = c("crispatus", "gasseri", "iners", "jensenii"),
+  CST = c("I", "II", "III", "V") # IV is anaerobic/diverse cluster
+)
 
-gut.data <- read.csv("/Users/caoyang/Desktop/Tetel Lab/datasets/gut.lifestyle.merged.csv")
-vaginal.data <- read.csv("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal.lifestyle.csv")
+VagSample.df <- data.frame(sample_data(VagData))
 
-vaginal.data <- vaginal.data %>% 
-  select(-X) %>% 
-  rename(vaginal_shannon = shannon,
-         # vaginal_max_taxa = max_taxa,
-         vaginal_OTU = OTU,
-         vaginal_sampleID = SampleID
+VagSample.df <- VagSample.df %>%
+  mutate(
+    CST = case_when(
+      str_detect(most_abundant_species, "gasseri") ~ "II",
+      str_detect(most_abundant_species, "crispatus") ~ "I",
+      str_detect(most_abundant_species, "iners") ~ "III",
+      str_detect(most_abundant_species, "jensenii") ~ "V",
+      TRUE ~ "IV" # Assign "IV" for diverse/anaerobic or unclassified species
+    )
   )
 
-gut.data <- gut.data %>% 
-  select(-c(X)) %>% 
-  rename(gut_shannon=shannon,
-         # gut_max_taxa = max_taxa,
-         gut_OTU = OTU,
-         gut_sampleID = SampleID)
+VagSample.df.cl <- VagSample.df  %>%
+  select(biome_id, logDate, CST, qr, SampleID, sampleType, most_abundant_species) %>%
+  arrange(biome_id)
 
-#View(gut.data)
-
-cross.df <- vaginal.data %>% 
-  left_join(gut.data) %>% 
-  filter(!is.na(gut_shannon))
+#VagSample.df.cl is organized by biome_id, but due to phyloseq constraint the sample_data is still organized by sample ID
+sample_data(VagData) <- VagSample.df.cl #there are 1571samples
 
 
-#View(cross.df)
+########################################################################
+#cleaning gut data
+otu_matG <- GutData %>%
+  otu_table() %>%
+  as("matrix") %>%
+  { if (taxa_are_rows(GutData)) t(.) else . }
+
+most_abundant_taxaG <- apply(otu_matG, 1, function(x) names(x)[which.max(x)])
+tax_matG <- tax_table(GutData) %>% as("matrix") 
+most_abundant_speciesG <- sapply(most_abundant_taxaG, function(taxa) {
+  if (taxa %in% rownames(tax_matG)) {
+    paste(tax_matG[taxa, "Genus"], tax_matG[taxa, "Species"])
+  } else {
+    NA
+  }
+})
+sample_data(GutData)$most_abundant_species <- most_abundant_speciesG
+
+
+########################################################################
+#matching these sample data of gut and vaginal data
+
+GutforMatch <- data.frame(sample_data(GutData))
+VagforMatch <- data.frame(sample_data(VagData))
+
+GutforMatch_trimmed <- GutforMatch %>%
+  group_by(biome_id, logDate) %>%
+  slice(1) %>%  # keep only the first sample in each group
+  ungroup()
+
+VagforMatch_trimmed <- VagforMatch %>%
+  group_by(biome_id, logDate) %>%
+  slice(1) %>%
+  ungroup()
+
+cross.df <- left_join(GutforMatch_trimmed, VagforMatch_trimmed, by = c("biome_id", "logDate"))
+
+#rename and remove meaningless columns
+cross.df <- cross.df %>%
+  rename(
+    SampleID_gut = SampleID.x,
+    qr_gut = qr.x,
+    SampleID_vaginal = SampleID.y,
+    qr_vaginal = qr.y,
+    most_abundant_species_gut = most_abundant_species.x,
+    most_abundant_species_vaginal = most_abundant_species.y
+  ) %>%
+  select(
+    -is_blank,
+    -status,
+    -sampleType.x,
+    -sampleType.y
+  )
+cross.df <- cross.df %>% filter(CST %in% c("I", "II", "III", "IV", "V"))
+#659 has CSTI, 70 has CSTII, 191 has CSTIII, 54 has CSTIV, 30 has CST V
+########################################################################
+#trying to remake the barplot of CST and gut species
+species_freq <- cross.df %>%
+  group_by(CST, most_abundant_species_gut) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(CST) %>%
+  mutate(percent = count / sum(count) * 100)
+
+top_species <- species_freq %>%
+  group_by(CST) %>%
+  slice_max(order_by = percent, n = 5)
+
+ggplot(top_species, aes(x = reorder(most_abundant_species_gut, -percent), y = percent, fill = CST)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ CST, scales = "free_x") +
+  labs(
+    x = "Most Abundant Gut Species",
+    y = "Percentage of Samples (%)",
+    title = "Most Common Gut Species by Vaginal CST"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# #read in the ones that Alice merged with other lifestyle factor
+# gut.data <- read.csv("/Users/caoyang/Desktop/Tetel Lab/datasets/gut.lifestyle.merged.csv")
+# vaginal.data <- read.csv("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal.lifestyle.csv")
+# 
+# #indicating which are vaginal which are gut
+# vaginal.data <- vaginal.data %>% 
+#   select(-X) %>% 
+#   rename(vaginal_shannon = shannon,
+#          # vaginal_max_taxa = max_taxa,
+#          vaginal_OTU = OTU,
+#          vaginal_sampleID = SampleID
+#   )
+# nrow(vaginal.data) #1415 samples
+# 
+# gut.data <- gut.data %>% 
+#   select(-c(X)) %>% 
+#   rename(gut_shannon=shannon,
+#          # gut_max_taxa = max_taxa,
+#          gut_OTU = OTU,
+#          gut_sampleID = SampleID)
+# nrow(sample_data(gut.data)) #1249 samples
+# sum(!is.na(gut.data$gut_shannon)) #none of the rows in gut_shannon are NA
+# 
+# cross.df <- left_join(gut.data, vaginal.data, by = c("biome_id", "logDate"))
+
+# #manually checking if there are any duplicating columns
+# names(cross.df)
+# all(cross.df$cholesterol_prop.x == cross.df$cholesterol_prop.y, na.rm = TRUE)
+# cross.df <- cross.df %>% select(-cholesterol_prop.y)
+# all(cross.df$caloriesall_avg.x == cross.df$caloriesall_avg.y, na.rm = TRUE)
+# which(cross.df$caloriesall_avg.x != cross.df$caloriesall_avg.y)
+# cross.df %>%
+#   filter(caloriesall_avg.x != caloriesall_avg.y)
+# 
+# #View(cross.df)
 
 # samp <- data.frame(sample_data(VagData))
 # sum(samp$SampleID %in% cross.df$vaginal_sampleID)
