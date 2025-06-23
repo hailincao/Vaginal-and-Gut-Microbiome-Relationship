@@ -329,7 +329,7 @@ merged_df <- left_join(gut_meta,
 
 ggplot(merged_df, aes(x = Lacto_abundance_Vag, y = Lacto_abundance_Gut, color = CST_vag)) +
   geom_point(alpha = 0.7) +
-  geom_smooth(method = "lm", se = FALSE) +
+  geom_smooth(method = "loess", se = FALSE, span = 0.75, linewidth = 0.8) +
   facet_wrap(~CST_vag) +
   labs(
     x = "Vaginal Lactobacillus Relative Abundance (%)",
@@ -373,7 +373,7 @@ merged_df2 <- left_join(gut_meta2,
 
 ggplot(merged_df2, aes(x = Prev_abundance_Vag, y = Prev_abundance_Gut, color = CST_vag)) +
   geom_point(alpha = 0.7) +
-  geom_smooth(method = "lm", se = FALSE) +
+  geom_smooth(method = "loess", se = FALSE, span = 0.75, linewidth = 0.8)  +
   facet_wrap(~CST_vag) +
   labs(
     x = "Vaginal Prevotella Relative Abundance (%)",
