@@ -134,7 +134,7 @@ total_reads_V <- colSums(otu_table(VagData))
 Lacto_rel_abund <- Lacto_abund / total_reads_V
 
 # Add relative abundance to sample_data
-sample_data(VagData)$Lacto_rel_abundance_vag <- Lacto_rel_abund
+sample_data(VagData)$lacto_rel_abundance_vag <- Lacto_rel_abund
 
 #adding Gardnerella
 gard_asvs_V <- rownames(tax_df)[tax_df$Genus == "Gardnerella"] 
@@ -212,7 +212,7 @@ cross.df_CST <- cross.df %>% filter(CST %in% c("I", "II", "III", "IV", "V"))
 #Lactobacillus
 #CST coloring
 ggplot(cross.df_CST, aes(x = sqrt(lacto_rel_abundance_gut), 
-                     y = sqrt(Lacto_rel_abundance_vag), 
+                     y = sqrt(lacto_rel_abundance_vag), 
                      color = CST)) +
   geom_point(alpha = 0.6, size = 2) +
   geom_smooth(method = "loess", se = FALSE, linewidth = 1.2) +  # non-linear curves
@@ -226,7 +226,7 @@ ggplot(cross.df_CST, aes(x = sqrt(lacto_rel_abundance_gut),
 
 #no CST coloring
 ggplot(cross.df, aes(x = sqrt(lacto_rel_abundance_gut), 
-                     y = sqrt(Lacto_rel_abundance_vag))) +
+                     y = sqrt(lacto_rel_abundance_vag))) +
   geom_point(alpha = 0.6, size = 2, color = "blue") +
   geom_smooth(method = "loess", se = FALSE, color = "black", linewidth = 1.2) +
   labs(
@@ -237,7 +237,7 @@ ggplot(cross.df, aes(x = sqrt(lacto_rel_abundance_gut),
   theme_minimal()
 
 cor.test(cross.df$lacto_rel_abundance_gut, 
-         cross.df$Lacto_rel_abundance_vag, 
+         cross.df$lacto_rel_abundance_vag, 
          method = "spearman")
 
 
@@ -326,9 +326,9 @@ ggplot(cross.df, aes(x = snea_rel_abundance_gut,
   ) +
   theme_minimal()
 
-
-
-
+cor.test(cross.df$snea_rel_abundance_gut, 
+         cross.df$snea_rel_abundance_vag, 
+         method = "spearman")
 
 ########################################################################
 #trying to remake the barplot of CST and gut species
@@ -400,6 +400,48 @@ ggplot(bvulg_data, aes(x = CST, y = gut_bvulg_rel_abundance, fill = CST)) +
     x = "Vaginal CST"
   ) +
   theme_minimal()
+
+######################################################################
+genera <- c("lacto", "gard", "mobi", "mega", "snea", "prevo")
+pairs_df <- expand.grid(vag = genera, gut = genera, stringsAsFactors = FALSE)
+get_colname <- function(genus, site) {
+  paste0(genus, "_rel_abundance_", site)
+}
+corr_results <- pairs_df %>%
+  rowwise() %>%
+  mutate(
+    vag_col = get_colname(vag, "vag"),
+    gut_col = get_colname(gut, "gut"),
+    # Compute Spearman correlation and p-value
+    cor_test = list(cor.test(
+      sqrt(cross.df[[gut_col]]),  # you can transform if you want sqrt
+      sqrt(cross.df[[vag_col]]),
+      method = "spearman",
+      exact = FALSE, # avoids ties warning
+      use = "complete.obs"
+    )),
+    rho = cor_test$estimate,
+    p_value = cor_test$p.value
+  ) %>%
+  ungroup() %>%
+  select(vag, gut, rho, p_value)
+
+ggplot(corr_results, aes(x = gut, y = vag, fill = rho)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  geom_text(aes(label = sprintf("%.2f", rho)), color = "black", size = 4) +
+  labs(
+    title = "Spearman Correlations Between Vaginal and Gut Species Abundances",
+    x = "Gut Species",
+    y = "Vaginal Species",
+    fill = "Spearman rho"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+
 
 # #read in the ones that Alice merged with other lifestyle factor
 # gut.data <- read.csv("/Users/caoyang/Desktop/Tetel Lab/datasets/gut.lifestyle.merged.csv")
@@ -955,6 +997,124 @@ colSums(is.na(bray_cross_site.full.filtered))
 #         text=element_text(size=16))
 
 ################################################################
+#picking one person with the most samples
+sample_counts <- cross.df %>%
+  count(biome_id, name = "num_samples") %>%
+  arrange(desc(num_samples))
+sample_counts #id 65 had 51 samples; 66 had 48 samples; 11 had 47 samples
+
+#looking at how participant 66 Lacto fluctuate over time
+
+df_66 <- cross.df %>%
+  filter(biome_id == 66)
+
+df_66_long <- df_66 %>%
+  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag) %>%
+  pivot_longer(cols = starts_with("lacto"), names_to = "Site", values_to = "Abundance")
+
+df_66_clean <- df_66_long %>%
+  filter(!is.na(logDate) & !is.na(Abundance) & is.finite(Abundance))
+
+ggplot(df_66_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1, linetype = "solid") +
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 66)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site"
+  ) +
+  theme_minimal()
+
+ggplot(df_66, aes(x = lacto_rel_abundance_gut, y = lacto_rel_abundance_vag)) +
+  geom_point(size = 3, color = "steelblue") +
+  geom_path(arrow = arrow(length = unit(0.2, "cm")), color = "gray40") +
+  labs(
+    title = "Gut vs Vaginal Lactobacillus Over Time (Participant 66)",
+    x = "Gut Lactobacillus Relative Abundance",
+    y = "Vaginal Lactobacillus Relative Abundance"
+  ) +
+  theme_minimal()
+
+#65
+df_65 <- cross.df %>%
+  filter(biome_id == 65)
+
+df_65_long <- df_65 %>%
+  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag) %>%
+  pivot_longer(cols = starts_with("lacto"), names_to = "Site", values_to = "Abundance")
+
+df_65_clean <- df_65_long %>%
+  filter(!is.na(logDate) & !is.na(Abundance) & is.finite(Abundance))
+
+ggplot(df_65_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1, linetype = "solid") +
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 65)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site"
+  ) +
+  theme_minimal()
+
+#11
+df_11 <- cross.df %>%
+  filter(biome_id == 11)
+
+df_11_long <- df_11 %>%
+  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag, CST) %>%
+  pivot_longer(cols = starts_with("lacto"), names_to = "Site", values_to = "Abundance")
+
+df_11_clean <- df_11_long %>%
+  filter(!is.na(logDate) & !is.na(Abundance) & is.finite(Abundance))
+
+ggplot(df_11_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1, linetype = "solid") +
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 11)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site"
+  ) +
+  theme_minimal()
+
+df_11_clean <- df_11_clean %>% arrange(logDate)
+
+# Identify stretches where CST is constant
+cst_spans <- df_11_clean %>%
+  select(logDate, CST) %>%
+  distinct() %>%
+  mutate(
+    change = CST != lag(CST, default = first(CST)),
+    phase_id = cumsum(change)
+  ) %>%
+  group_by(phase_id, CST) %>%
+  summarise(start = min(logDate), end = max(logDate), .groups = "drop")
+
+ggplot(df_11_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  # Background CST color
+  geom_rect(data = cst_spans, 
+            aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf, fill = CST),
+            inherit.aes = FALSE, alpha = 0.2) +
+  
+  # Your original layers
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
+  
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 11)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site",
+    fill = "CST Phase"
+  ) +
+  theme_minimal()
+
+
+
+
 
 
 
