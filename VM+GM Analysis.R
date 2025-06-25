@@ -54,7 +54,8 @@ VagSample.df.cl <- VagSample.df  %>%
 #VagSample.df.cl is organized by biome_id, but due to phyloseq constraint the sample_data is still organized by sample ID
 sample_data(VagData) <- VagSample.df.cl #there are 1571samples
 
-
+CST_NA <- VagSample.df.cl %>% 
+  filter(is.na(CST))
 ########################################################################
 #cleaning gut data
 otu_matG <- GutData %>%
@@ -400,6 +401,66 @@ ggplot(bvulg_data, aes(x = CST, y = gut_bvulg_rel_abundance, fill = CST)) +
     x = "Vaginal CST"
   ) +
   theme_minimal()
+######################################################################
+#making stacked bar
+# target_species <- c(
+#   "Bacteroides vulgatus", "Finegoldia magna", "Collinsella aerofaciens",
+#   "Fenollaria", "Lactobacillus helveticus", "Bacteroides dorei"
+# )
+
+#creating a new dataframe that categorize the dominant species into either one of the above of "other"
+# plot_df <- cross.df %>%
+#   mutate(species_group = ifelse(most_abundant_species_gut %in% target_species,
+#                                 most_abundant_species_gut,
+#                                 "Other"))
+
+
+plot_df <- cross.df %>%
+  mutate(
+    species_group = case_when(
+      str_detect(most_abundant_species_gut, "Bacteroides vulgatus") ~ "Bacteroides vulgatus",
+      str_detect(most_abundant_species_gut, "Finegoldia magna") ~ "Finegoldia magna",
+      str_detect(most_abundant_species_gut, "Collinsella aerofaciens") ~ "Collinsella aerofaciens",
+      str_detect(most_abundant_species_gut, "Fenollaria") ~ "Fenollaria",
+      str_detect(most_abundant_species_gut, "Lactobacillus helveticus") ~ "Lactobacillus helveticus",
+      str_detect(most_abundant_species_gut, "Bacteroides dorei") ~ "Bacteroides dorei",
+      TRUE ~ "Other"
+    )
+  )
+
+
+
+#compute the frequency (percentage) of each most dominant species 
+species_freq <- plot_df %>%
+  filter(!is.na(CST)) %>%
+  group_by(CST, species_group) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(CST) %>%
+  mutate(percent = count / sum(count) * 100)
+
+ggplot(species_freq, aes(x = CST, y = percent, fill = species_group)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(
+    title = "Distribution of Dominant Gut Microbiome Species by CST",
+    x = "Vaginal CST",
+    y = "Percentage of Samples",
+    fill = "Gut Species"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c(
+      "Bacteroides vulgatus" = "#1f77b4",
+      "Finegoldia magna" = "#ff7f0e",
+      "Collinsella aerofaciens" = "#2ca02c",
+      "Fenollaria" = "#d62728",
+      "Lactobacillus helveticus" = "#9467bd",
+      "Bacteroides dorei" = "#8c564b",
+      "Other" = "gray80"
+    )
+  )
+
+
+
 
 ######################################################################
 genera <- c("lacto", "gard", "mobi", "mega", "snea", "prevo")
@@ -824,147 +885,147 @@ ggplot(corr_results, aes(x = gut, y = vag, fill = rho)) +
 
 ##################################################
 #creating a scatterplot of shannon diversity correlation between vaginal and gut per person
-plot(x = cross.df$vaginal_shannon, y = cross.df$gut_shannon,
-     main = "Average Shannnon Diversity Correlation",
-     xlab = "Vaginal Microbiome",
-     ylab = "Gut Microbiome",
-     pch = 16)           
-
-spline_fit <- smooth.spline(cross.df$vaginal_shannon, cross.df$gut_shannon)
-lines(spline_fit, col = "blue", lwd = 2)
+# plot(x = cross.df$vaginal_shannon, y = cross.df$gut_shannon,
+#      main = "Average Shannnon Diversity Correlation",
+#      xlab = "Vaginal Microbiome",
+#      ylab = "Gut Microbiome",
+#      pch = 16)           
+# 
+# spline_fit <- smooth.spline(cross.df$vaginal_shannon, cross.df$gut_shannon)
+# lines(spline_fit, col = "blue", lwd = 2)
 
 ###################################################
 #replicating Alice's analysis
-vag.bacterial.data <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal_cleaned_max_taxa.rds")
-gut.bacterial.data <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/fecal_cleaned_max_taxa.rds")
-
-vag_ids_to_keep <- cross.df$vaginal_sampleID
-gut_ids_to_keep <- cross.df$gut_sampleID
-
-# Subset the phyloseq dfs
-vag.bacterial.subset <- prune_samples(vag_ids_to_keep, vag.bacterial.data)
-gut.bacterial.subset <- prune_samples(gut_ids_to_keep, gut.bacterial.data)
-
-# metadata df
-vag.meta <- sample_data(vag.bacterial.subset)
-gut.meta <- sample_data(gut.bacterial.subset)
-
-# merge bacterial data of sites
-merge.site.bacterial <- merge_phyloseq(vag.bacterial.subset, gut.bacterial.subset)
-
-#View(merge.site.bacterial)
-head(tax_table(merge.site.bacterial))
-colnames(tax_table(merge.site.bacterial))
-colnames(sample_data(merge.site.bacterial))
-
-# bray curtis distance of pairs (beta diversity)
-bray_dist <- phyloseq::distance(merge.site.bacterial, method = "bray")
-
-class(bray_dist)
-
-bray_df <- as.matrix(bray_dist) %>%
-  as.data.frame() %>%
-  rownames_to_column("Sample1") %>%
-  pivot_longer(-Sample1, names_to = "Sample2", values_to = "bray") %>%
-  filter(Sample1 < Sample2) 
-
-# join df
-meta <- as(sample_data(merge.site.bacterial), "data.frame") %>% 
-  select(biome_id, SampleID, logDate, sampleType)
-bray_meta <- bray_df %>%
-  left_join(meta, by = c("Sample1" = "SampleID")) %>%
-  rename(biome_id_1 = biome_id, site1 = sampleType, logDate_1 = logDate) %>%
-  left_join(meta, by = c("Sample2" = "SampleID")) %>%
-  rename(biome_id_2 = biome_id, site2 = sampleType, logDate_2 = logDate)
-
-# Filter to within-person, cross-site comparisons
-bray_cross_site <- bray_meta %>%
-  filter(biome_id_1 == biome_id_2,
-         site1 != site2,
-         logDate_1 == logDate_2)
-# Join meta data
-bray_cross_site.full <- bray_cross_site %>% 
-  left_join(cross.df, by = c("logDate_1" = "logDate", "biome_id_1" = "biome_id"))
-names(bray_cross_site.full)
-
-colnames(bray_cross_site.full)
-
-# gut vs vaginal Shannon
-ggplot(bray_cross_site.full, aes(x = vaginal_shannon, y = gut_shannon, col=as.factor(biome_id_1))) +
-  geom_point(alpha = 0.6) +
-  # geom_smooth(method = "loess", se = FALSE) +
-  geom_smooth(method = "loess", se = FALSE, color="blue") +
-  labs(
-    x = "Vaginal Shannon Diversity",
-    y = "Gut Shannon Diversity",
-    title = " "
-  ) +
-  theme_minimal() +
-  ylim(0,5)+
-  theme(axis.text.x = element_text(angle = 0, hjust = 1, vjust=0),
-        text=element_text(size=16),
-        legend.position="none")
-
-cor.test(bray_cross_site.full$vaginal_shannon, 
-         bray_cross_site.full$gut_shannon, use = "complete.obs")
-
-## Bray
+# vag.bacterial.data <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal_cleaned_max_taxa.rds")
+# gut.bacterial.data <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/fecal_cleaned_max_taxa.rds")
+# 
+# vag_ids_to_keep <- cross.df$vaginal_sampleID
+# gut_ids_to_keep <- cross.df$gut_sampleID
+# 
+# # Subset the phyloseq dfs
+# vag.bacterial.subset <- prune_samples(vag_ids_to_keep, vag.bacterial.data)
+# gut.bacterial.subset <- prune_samples(gut_ids_to_keep, gut.bacterial.data)
+# 
+# # metadata df
+# vag.meta <- sample_data(vag.bacterial.subset)
+# gut.meta <- sample_data(gut.bacterial.subset)
+# 
+# # merge bacterial data of sites
+# merge.site.bacterial <- merge_phyloseq(vag.bacterial.subset, gut.bacterial.subset)
+# 
+# #View(merge.site.bacterial)
+# head(tax_table(merge.site.bacterial))
+# colnames(tax_table(merge.site.bacterial))
+# colnames(sample_data(merge.site.bacterial))
+# 
+# # bray curtis distance of pairs (beta diversity)
+# bray_dist <- phyloseq::distance(merge.site.bacterial, method = "bray")
+# 
+# class(bray_dist)
+# 
+# bray_df <- as.matrix(bray_dist) %>%
+#   as.data.frame() %>%
+#   rownames_to_column("Sample1") %>%
+#   pivot_longer(-Sample1, names_to = "Sample2", values_to = "bray") %>%
+#   filter(Sample1 < Sample2) 
+# 
+# # join df
+# meta <- as(sample_data(merge.site.bacterial), "data.frame") %>% 
+#   select(biome_id, SampleID, logDate, sampleType)
+# bray_meta <- bray_df %>%
+#   left_join(meta, by = c("Sample1" = "SampleID")) %>%
+#   rename(biome_id_1 = biome_id, site1 = sampleType, logDate_1 = logDate) %>%
+#   left_join(meta, by = c("Sample2" = "SampleID")) %>%
+#   rename(biome_id_2 = biome_id, site2 = sampleType, logDate_2 = logDate)
+# 
+# # Filter to within-person, cross-site comparisons
+# bray_cross_site <- bray_meta %>%
+#   filter(biome_id_1 == biome_id_2,
+#          site1 != site2,
+#          logDate_1 == logDate_2)
+# # Join meta data
+# bray_cross_site.full <- bray_cross_site %>% 
+#   left_join(cross.df, by = c("logDate_1" = "logDate", "biome_id_1" = "biome_id"))
+# names(bray_cross_site.full)
+# 
+# colnames(bray_cross_site.full)
+# 
+# # gut vs vaginal Shannon
+# ggplot(bray_cross_site.full, aes(x = vaginal_shannon, y = gut_shannon, col=as.factor(biome_id_1))) +
+#   geom_point(alpha = 0.6) +
+#   # geom_smooth(method = "loess", se = FALSE) +
+#   geom_smooth(method = "loess", se = FALSE, color="blue") +
+#   labs(
+#     x = "Vaginal Shannon Diversity",
+#     y = "Gut Shannon Diversity",
+#     title = " "
+#   ) +
+#   theme_minimal() +
+#   ylim(0,5)+
+#   theme(axis.text.x = element_text(angle = 0, hjust = 1, vjust=0),
+#         text=element_text(size=16),
+#         legend.position="none")
+# 
+# cor.test(bray_cross_site.full$vaginal_shannon, 
+#          bray_cross_site.full$gut_shannon, use = "complete.obs")
+# 
+# ## Bray
 
 # Beta Diversity Between Gut and Vaginal Microbiomes pairs
-ggplot(bray_cross_site.full, aes(x = as.factor(biome_id_1), y = bray)) +
-  geom_boxplot(outlier.alpha = 0.3) +
-  geom_jitter(width = 0.2, alpha = 0.5, color = "steelblue") +
-  labs(
-    x = "Participant ID",
-    y = "Bray-Curtis Dissimilarity (Gut vs Vaginal)",
-    title = " "
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 0, vjust = 0.5),
-        text = element_text(size = 14))
-
-#View(bray_cross_site.full)
-dim(bray_cross_site.full)
-
-# Cross-site Bray-Curtis by CST
-ggplot(bray_cross_site.full, aes(x = CST, y = bray, fill = CST)) +
-  geom_boxplot() +
-  geom_jitter(color="steelblue", width = 0.2, alpha = 0.5) +
-  labs(
-    x = "CST",
-    y = "Bray-Curtis Dissimilarity",
-    title = ""
-  ) +
-  theme_minimal() +
-  scale_fill_viridis_d() +
-  theme(text = element_text(size = 14)) +
-  guides(fill = guide_legend(title = "CST"))
-
-## Edit df
-bray_cross_site.full.filtered <- bray_cross_site.full %>% 
-  select(-c(Sample1, Sample2, logDate_2, biome_id_2, site1, site2, vaginal_sampleID, gut_sampleID)) %>% 
-  rename(logDate = logDate_1,
-         biome_id = biome_id_1)
-colSums(is.na(bray_cross_site.full.filtered))
-
-bray_cross_site.full.filtered <- bray_cross_site.full.filtered %>% 
-  mutate(stress_severity = case_when(
-    stress_score <= 14 ~ "Normal",
-    stress_score >= 15 & stress_score <= 18 ~ "Mild",
-    stress_score >= 19 & stress_score <= 25 ~ "Moderate",
-    stress_score >= 26 & stress_score <= 33 ~ "Severe",
-    stress_score >= 34 ~ "Extremely Severe",
-    TRUE ~ NA_character_
-  )) %>% 
-  select(-stress_score)
-colSums(is.na(bray_cross_site.full.filtered))
-
-# filter all NA cols and all NA rows
-bray_cross_site.full.filtered <- bray_cross_site.full.filtered %>%
-  select(where(~ !all(is.na(.)))) %>%
-  filter(if_any(everything(), ~ !is.na(.))) 
-dim(bray_cross_site.full.filtered)
-colSums(is.na(bray_cross_site.full.filtered))
+# ggplot(bray_cross_site.full, aes(x = as.factor(biome_id_1), y = bray)) +
+#   geom_boxplot(outlier.alpha = 0.3) +
+#   geom_jitter(width = 0.2, alpha = 0.5, color = "steelblue") +
+#   labs(
+#     x = "Participant ID",
+#     y = "Bray-Curtis Dissimilarity (Gut vs Vaginal)",
+#     title = " "
+#   ) +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 0, vjust = 0.5),
+#         text = element_text(size = 14))
+# 
+# #View(bray_cross_site.full)
+# dim(bray_cross_site.full)
+# 
+# # Cross-site Bray-Curtis by CST
+# ggplot(bray_cross_site.full, aes(x = CST, y = bray, fill = CST)) +
+#   geom_boxplot() +
+#   geom_jitter(color="steelblue", width = 0.2, alpha = 0.5) +
+#   labs(
+#     x = "CST",
+#     y = "Bray-Curtis Dissimilarity",
+#     title = ""
+#   ) +
+#   theme_minimal() +
+#   scale_fill_viridis_d() +
+#   theme(text = element_text(size = 14)) +
+#   guides(fill = guide_legend(title = "CST"))
+# 
+# ## Edit df
+# bray_cross_site.full.filtered <- bray_cross_site.full %>% 
+#   select(-c(Sample1, Sample2, logDate_2, biome_id_2, site1, site2, vaginal_sampleID, gut_sampleID)) %>% 
+#   rename(logDate = logDate_1,
+#          biome_id = biome_id_1)
+# colSums(is.na(bray_cross_site.full.filtered))
+# 
+# bray_cross_site.full.filtered <- bray_cross_site.full.filtered %>% 
+#   mutate(stress_severity = case_when(
+#     stress_score <= 14 ~ "Normal",
+#     stress_score >= 15 & stress_score <= 18 ~ "Mild",
+#     stress_score >= 19 & stress_score <= 25 ~ "Moderate",
+#     stress_score >= 26 & stress_score <= 33 ~ "Severe",
+#     stress_score >= 34 ~ "Extremely Severe",
+#     TRUE ~ NA_character_
+#   )) %>% 
+#   select(-stress_score)
+# colSums(is.na(bray_cross_site.full.filtered))
+# 
+# # filter all NA cols and all NA rows
+# bray_cross_site.full.filtered <- bray_cross_site.full.filtered %>%
+#   select(where(~ !all(is.na(.)))) %>%
+#   filter(if_any(everything(), ~ !is.na(.))) 
+# dim(bray_cross_site.full.filtered)
+# colSums(is.na(bray_cross_site.full.filtered))
 
 ################################################################
 #this part I did not understand what gut vs. vaginal bray between-person is
@@ -1009,7 +1070,7 @@ df_66 <- cross.df %>%
   filter(biome_id == 66)
 
 df_66_long <- df_66 %>%
-  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag) %>%
+  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag, CST) %>%
   pivot_longer(cols = starts_with("lacto"), names_to = "Site", values_to = "Abundance")
 
 df_66_clean <- df_66_long %>%
@@ -1041,7 +1102,7 @@ df_65 <- cross.df %>%
   filter(biome_id == 65)
 
 df_65_long <- df_65 %>%
-  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag) %>%
+  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag, CST) %>%
   pivot_longer(cols = starts_with("lacto"), names_to = "Site", values_to = "Abundance")
 
 df_65_clean <- df_65_long %>%
@@ -1094,12 +1155,9 @@ cst_spans <- df_11_clean %>%
   summarise(start = min(logDate), end = max(logDate), .groups = "drop")
 
 ggplot(df_11_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
-  # Background CST color
   geom_rect(data = cst_spans, 
             aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf, fill = CST),
             inherit.aes = FALSE, alpha = 0.2) +
-  
-  # Your original layers
   geom_point(size = 2) +
   geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
   
@@ -1113,11 +1171,96 @@ ggplot(df_11_clean, aes(x = logDate, y = Abundance, color = Site, group = Site))
   theme_minimal()
 
 
+cst_spans <- df_66_clean %>%
+  select(logDate, CST) %>%
+  distinct() %>%
+  mutate(
+    change = CST != lag(CST, default = first(CST)),
+    phase_id = cumsum(change)
+  ) %>%
+  group_by(phase_id, CST) %>%
+  summarise(start = min(logDate), end = max(logDate), .groups = "drop")
+
+ggplot(df_66_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  geom_rect(data = cst_spans, 
+            aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf, fill = CST),
+            inherit.aes = FALSE, alpha = 0.2) +
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
+  
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 66)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site",
+    fill = "CST Phase"
+  ) +
+  theme_minimal()
 
 
+cst_spans <- df_65_clean %>%
+  select(logDate, CST) %>%
+  distinct() %>%
+  mutate(
+    change = CST != lag(CST, default = first(CST)),
+    phase_id = cumsum(change)
+  ) %>%
+  group_by(phase_id, CST) %>%
+  summarise(start = min(logDate), end = max(logDate), .groups = "drop")
+
+ggplot(df_65_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  geom_rect(data = cst_spans, 
+            aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf, fill = CST),
+            inherit.aes = FALSE, alpha = 0.2) +
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
+  
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 65)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site",
+    fill = "CST Phase"
+  ) +
+  theme_minimal()
 
 
+cst_rects <- df_66_clean %>%
+  distinct(logDate, CST)
 
+# 2. Plot with CST-colored backgrounds, including NA
+ggplot(df_66_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  # CST background per day
+  geom_tile(data = cst_rects,
+            aes(x = logDate, y = 0, fill = CST),
+            width = 1, height = Inf, alpha = 0.2, inherit.aes = FALSE) +
+  
+  # Foreground data: points, lines, smooth
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
+  
+  # Titles and themes
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 66)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site",
+    fill = "CST"
+  ) +
+  theme_minimal() +
+  
+  # 3. Assign white color to NA CST
+  scale_fill_manual(
+    values = c(
+      "I" = "#1b9e77",
+      "II" = "#d95f02",
+      "III" = "#7570b3",
+      "IV" = "#e7298a",
+      "V" = "#66a61e"
+    ),
+    na.value = "white"  # This goes outside the values list
+  
+    )
 
 
 
