@@ -330,7 +330,18 @@ ggplot(cross.df, aes(x = snea_rel_abundance_gut,
 cor.test(cross.df$snea_rel_abundance_gut, 
          cross.df$snea_rel_abundance_vag, 
          method = "spearman")
+########################################################################
+#trying to see lactobacillus relative abundanec fluctuation over time
+cross.df_clean <- cross.df %>%
+  filter(!is.na(logDate), !is.na(lacto_rel_abundance_vag))
 
+ggplot(cross.df_clean, aes(x = logDate, y = lacto_rel_abundance_vag)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  labs(title = "Lactobacillus Relative Abundance Over Time",
+       x = "Log Date",
+       y = "Relative Abundance") +
+  theme_minimal()
 ########################################################################
 #trying to remake the barplot of CST and gut species
 species_freq <- cross.df_CST %>%
@@ -500,7 +511,38 @@ ggplot(corr_results, aes(x = gut, y = vag, fill = rho)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+############################################################
+#trying to create a buunch of scatterplot
+# Generate scatter data
+scatter_data <- pairs_df %>%
+  rowwise() %>%
+  mutate(
+    gut_val = list(sqrt(cross.df[[paste0(gut, "_rel_abundance_gut")]])),
+    vag_val = list(sqrt(cross.df[[paste0(vag, "_rel_abundance_vag")]])),
+    id = paste(gut, vag, sep = "_")
+  ) %>%
+  unnest(cols = c(gut_val, vag_val)) %>%
+  ungroup()
 
+# Rename columns for clarity
+scatter_data <- scatter_data %>%
+  rename(gut_abund = gut_val, vag_abund = vag_val)
+
+# Plot
+ggplot(scatter_data, aes(x = gut_abund, y = vag_abund)) +
+  geom_point(alpha = 0.6, size = 1) +
+  geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs"), se = FALSE, color = "red", size = 0.5) +
+  facet_grid(rows = vars(vag), cols = vars(gut)) +
+  theme_minimal() +
+  labs(
+    x = "Gut genus abundance (sqrt)",
+    y = "Vaginal genus abundance (sqrt)",
+    title = "Scatterplots with Spline: Gut vs. Vaginal Genus Abundances"
+  ) +
+  theme(
+    strip.text = element_text(size = 8),
+    axis.text = element_text(size = 5)
+  )
 
 
 
@@ -1261,6 +1303,108 @@ ggplot(df_66_clean, aes(x = logDate, y = Abundance, color = Site, group = Site))
     na.value = "white"  # This goes outside the values list
   
     )
+
+################
+#locating the participants with the most gut dominant species shift
+shifts_per_participant <- cross.df %>%
+  arrange(biome_id, logDate) %>%  # sort by participant and time
+  group_by(biome_id) %>%
+  mutate(
+    prev_species = lag(most_abundant_species_gut),                  # previous time point
+    species_changed = most_abundant_species_gut != prev_species     # TRUE when species changes
+  ) %>%
+  summarise(num_shifts = sum(species_changed, na.rm = TRUE)) %>%  # count changes
+  arrange(desc(num_shifts))
+
+#who shifted the most
+head(shifts_per_participant, 10) #11 #66 #64 #41 #12 #332
+
+#trying participant 64
+df_64 <- cross.df %>%
+  filter(biome_id == 64)
+
+df_64_long <- df_64 %>%
+  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag, CST) %>%
+  pivot_longer(cols = starts_with("lacto"), names_to = "Site", values_to = "Abundance")
+
+df_64_clean <- df_64_long %>%
+  filter(!is.na(logDate) & !is.na(Abundance) & is.finite(Abundance))
+
+cst_rects64 <- df_64_clean %>%
+  distinct(logDate, CST)
+
+ggplot(df_65_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  geom_tile(data = cst_rects64,
+            aes(x = logDate, y = 0, fill = CST),
+            width = 1, height = Inf, alpha = 0.2, inherit.aes = FALSE) +
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 64)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site",
+    fill = "CST"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c(
+      "I" = "#1b9e77",
+      "II" = "#d95f02",
+      "III" = "#7570b3",
+      "IV" = "#e7298a",
+      "V" = "#66a61e"
+    ),
+    na.value = "white"  # This goes outside the values list
+    
+  )
+
+#trying participant 41
+df_41 <- cross.df %>%
+  filter(biome_id == 41)
+
+df_41_long <- df_41 %>%
+  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag, CST) %>%
+  pivot_longer(cols = starts_with("lacto"), names_to = "Site", values_to = "Abundance")
+
+df_41_clean <- df_41_long %>%
+  filter(!is.na(logDate) & !is.na(Abundance) & is.finite(Abundance))
+
+cst_rects41 <- df_41_clean %>%
+  distinct(logDate, CST)
+
+ggplot(df_41_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  geom_tile(data = cst_rects41,
+            aes(x = logDate, y = 0, fill = CST),
+            width = 1, height = Inf, alpha = 0.2, inherit.aes = FALSE) +
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 41)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site",
+    fill = "CST"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c(
+      "I" = "#1b9e77",
+      "II" = "#d95f02",
+      "III" = "#7570b3",
+      "IV" = "#e7298a",
+      "V" = "#66a61e"
+    ),
+    na.value = "white"  # This goes outside the values list
+    
+  )
+
+
+
+
+
+
+
 
 
 
