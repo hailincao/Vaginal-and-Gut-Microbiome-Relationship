@@ -4,18 +4,19 @@ library(tidyverse)
 library(Matrix)
 library(readxl) 
 library(patchwork)
+library(vegan)
 
 # #replicating Alice's code
 
 #importing cleaned bacteria data
 VagData <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/vaginal_bacteria_cleanedv3.rds")
 GutData <- readRDS("/Users/caoyang/Desktop/Tetel Lab/datasets/fecal_bacteria_cleanedv3.rds")
-
 ########################################################################
 #cleaning vaginal data
 otu_mat <- VagData %>%
   otu_table() %>%
   as("matrix")
+
 
 # Transpose if taxa are rows
 if (taxa_are_rows(VagData)) {
@@ -48,6 +49,7 @@ VagSample.df <- VagSample.df %>%
     )
   )
 
+
 VagSample.df.cl <- VagSample.df  %>%
   select(biome_id, logDate, CST, qr, SampleID, sampleType, most_abundant_species) %>%
   arrange(biome_id)
@@ -57,6 +59,8 @@ sample_data(VagData) <- VagSample.df.cl #there are 1571samples
 
 CST_NA <- VagSample.df.cl %>% 
   filter(is.na(CST))
+
+
 ########################################################################
 #cleaning gut data
 otu_matG <- GutData %>%
@@ -134,6 +138,55 @@ putredinis_rel_abund_G <- putredinis_abund_G / total_reads_G
 sample_data(GutData)$putredinis_rel_abundance_gut <- putredinis_rel_abund_G
 
 
+#add Staphylococcus epidermidis to check whether a sample has been mislabeled
+staphy_asvs_G <- rownames(tax_df_G)[tax_df_G$Species == "epidermidis"]
+staphy_abund_G <- colSums(otu_table(GutData)[staphy_asvs_G, , drop = FALSE])
+staphy_rel_abund_G <- staphy_abund_G / total_reads_G
+sample_data(GutData)$staphy_rel_abundance_gut <- staphy_rel_abund_G
+
+staphyG <- tax_df_G %>% filter(Genus == "Staphylococcus")
+
+#add Lactobacillus iners
+Liners_asvs_G <- rownames(tax_df_G)[tax_df_G$Species == "iners"]
+Liners_abund_G <- colSums(otu_table(GutData)[Liners_asvs_G, , drop = FALSE])
+Liners_rel_abund_G <- Liners_abund_G / total_reads_G
+sample_data(GutData)$Liners_rel_abundance_gut <- Liners_rel_abund_G
+
+
+##############################################################
+# otu_df <- as.data.frame(otu_table(GutData))
+# tax_df <- as.data.frame(tax_table(GutData))
+# 
+# # If taxa are columns (not rows), transpose
+# if(taxa_are_rows(GutData)) {
+#   otu_df <- t(otu_df)
+# }
+# 
+# # Combine counts with taxonomy
+# otu_tax_df <- otu_df %>%
+#   as_tibble(rownames = "ASV") %>%
+#   left_join(tax_df %>% as_tibble(rownames = "ASV"), by = "ASV")
+# 
+# # Filter for Staphylococcus genus
+# staph_df <- otu_tax_df %>%
+#   filter(Genus == "Staphylococcus") %>%
+#   rowwise() %>%
+#   mutate(Total_Count = sum(c_across(where(is.numeric)))) %>%
+#   ungroup()
+# 
+# # Summarize by species
+# staph_species_counts <- staph_df %>%
+#   group_by(Species) %>%
+#   summarise(Total_Count = sum(Total_Count)) %>%
+#   arrange(desc(Total_Count))
+# 
+# # View result
+# print(staph_species_counts)
+
+
+
+
+
 ######################
 #vaginal data
 
@@ -185,6 +238,26 @@ putredinis_abund_V <- colSums(otu_table(VagData)[putredinis_asvs_V, , drop = FAL
 putredinis_rel_abund_V <- putredinis_abund_V / total_reads_V
 sample_data(VagData)$putredinis_rel_abundance_vag <- putredinis_rel_abund_V
 
+#add Staphylococcus epidermidis 
+staphy_asvs_V <- rownames(tax_df)[tax_df$Species == "epidermidis"] 
+staphy_abund_V <- colSums(otu_table(VagData)[staphy_asvs_V, , drop = FALSE])
+staphy_rel_abund_V <- staphy_abund_V / total_reads_V
+sample_data(VagData)$staphy_rel_abundance_vag <- staphy_rel_abund_V
+
+staphy <- tax_df %>% filter(Genus == "Staphylococcus")
+
+table(staphyG$Species)
+table(staphy$Species)
+
+#add L.iners
+Liners_asvs_V <- rownames(tax_df)[tax_df$Species == "iners"] 
+Liners_abund_V <- colSums(otu_table(VagData)[Liners_asvs_V, , drop = FALSE])
+Liners_rel_abund_V <- Liners_abund_V / total_reads_V
+sample_data(VagData)$Liners_rel_abundance_vag <- Liners_rel_abund_V
+
+
+
+
 ########################################################################
 #matching these sample data of gut and vaginal data
 
@@ -203,6 +276,8 @@ VagforMatch_trimmed <- VagforMatch %>%
 
 cross.df <- left_join(GutforMatch_trimmed, VagforMatch_trimmed, by = c("biome_id", "logDate"))
 
+cross.CSTNA <- cross.df %>% filter(is.na(CST)) #NA comes from the gut data that did not have matched vaginal data
+
 #rename and remove meaningless columns
 cross.df <- cross.df %>%
   rename(
@@ -219,12 +294,15 @@ cross.df <- cross.df %>%
     -sampleType.x,
     -sampleType.y
   )
-
+######################################################################
+#mislabel check
+summary(cross.df$staphy_rel_abundance_gut)
+summary(cross.df$staphy_rel_abundance_vag)
 
 ########################################################################
-cross.df_CST <- cross.df %>% filter(CST %in% c("I", "II", "III", "IV", "V"))
+cross.df_CST <- cross.df %>% filter(CST %in% c("I", "II", "III", "IV", "V")) #don't omit NA
 #659 has CSTI, 70 has CSTII, 191 has CSTIII, 54 has CSTIV, 30 has CST V
-
+dim(cross.df)
 ########################################################################
 #finding correlation of gut and vaginal microbiome 
 
@@ -425,7 +503,7 @@ bvulg_data <- cross.df_CST %>%
 ggplot(bvulg_data, aes(x = CST, y = gut_bvulg_rel_abundance, fill = CST)) +
   geom_boxplot() +
   labs(
-    title = "Relative Abundance of B. vulgatus by Vaginal CST",
+    title = "Relative Abundance of B. vulgatus by Vaginal CST (samples)",
     y = "Relative Abundance",
     x = "Vaginal CST"
   ) +
@@ -483,7 +561,7 @@ species_freq <- plot_df %>%
 ggplot(species_freq, aes(x = CST, y = percent, fill = species_group)) +
   geom_bar(stat = "identity", position = "stack") +
   labs(
-    title = "Distribution of Dominant Gut Microbiome Species by CST",
+    title = "Distribution of Dominant Gut Microbiome Species by CST (samples)",
     x = "Vaginal CST",
     y = "Percentage of Samples",
     fill = "Gut Species"
@@ -501,6 +579,80 @@ ggplot(species_freq, aes(x = CST, y = percent, fill = species_group)) +
     )
   )
 
+
+cst_labels <- data.frame(
+  CST = c("I", "II", "III", "IV", "V"),
+  label = c("n = 659", "n = 70", "n = 191", "n = 54", "n = 30"),
+  y = 105  # y-position above the 100% bar
+)
+
+# Plot with manual sample size labels
+ggplot(species_freq, aes(x = CST, y = percent, fill = species_group)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(data = cst_labels,
+            aes(x = CST, y = y, label = label),
+            inherit.aes = FALSE,
+            size = 3.5) +
+  labs(
+    title = "Distribution of Dominant Gut Microbiome Species by CST (samples)",
+    x = "Vaginal CST",
+    y = "Percentage of Samples",
+    fill = "Gut Species"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c(
+      "Bacteroides vulgatus" = "#1f77b4",
+      "Finegoldia magna" = "#ff7f0e",
+      "Collinsella aerofaciens" = "#2ca02c",
+      "Fenollaria" = "#d62728",
+      "Lactobacillus helveticus" = "#9467bd",
+      "Bacteroides dorei" = "#8c564b",
+      "Other" = "gray80"
+    )
+  )
+
+contingency_tbl <- table(plot_df$CST, plot_df$species_group)
+
+# Run Chi-squared test
+chisq.test(contingency_tbl)
+
+#is CST IV significantly different from otehrs?
+plot_dfIV <- plot_df %>%
+  mutate(CST_group = ifelse(CST == "IV", "CST_IV", "Other_CST"))
+
+# Contingency table: CST IV vs. others across species_group
+cst_iv_tbl <- table(plot_dfIV$CST_group, plot_dfIV$species_group)
+
+# View the table (optional)
+print(cst_iv_tbl)
+
+# Run Chi-squared test
+chisq_result <- chisq.test(cst_iv_tbl)
+print(chisq_result)
+#yes CST IV is indeed different from others
+
+#what about CST V?
+plot_dfV <- plot_df %>%
+  mutate(CST_group = ifelse(CST == "V", "CST_V", "Other_CST"))
+cst_v_tbl <- table(plot_dfV$CST_group, plot_dfV$species_group)
+print(cst_v_tbl)
+chisq_result <- chisq.test(cst_v_tbl)
+print(chisq_result)
+#CST V difference significance
+
+chi <- chisq.test(table(plot_df$CST, plot_df$species_group))
+
+# Extract standardized residuals
+std_res <- chi$stdres
+# 
+# # View as a heatmap
+# pheatmap(std_res,
+#          cluster_rows = FALSE,
+#          cluster_cols = FALSE,
+#          display_numbers = TRUE,
+#          main = "Standardized Residuals (Chi-squared)")
+# 
 
 
 
@@ -993,6 +1145,116 @@ ggplot(df_43_clean, aes(x = logDate, y = Abundance, color = Site, group = Site))
     na.value = "white"  # This goes outside the values list
     
   )
+
+
+###################################################################
+#creating a new column that calculates the difference between gut and vaginal lactobacillus abundance
+cross.df$lacto_dif <- cross.df$lacto_rel_abundance_vag - cross.df$lacto_rel_abundance_gut
+
+#visualize the difference fluctuation over time
+ggplot(cross.df, aes(x = logDate, y = lacto_dif)) +
+  geom_smooth(method = "loess", se = FALSE) +
+  geom_point(color = "steelblue", alpha = 0.6) +
+  labs(
+    title = "Difference in Lactobacillus Relative Abundance (Gut - Vaginal) Over Time",
+    x = "Date",
+    y = "Lactobacillus Abundance Difference"
+  ) +
+  theme_minimal()
+###################################################################
+#PCOA
+# abundance_matrix <- cross.df %>%
+#   select(-biome_id, -site)
+# 
+# # Bray-Curtis distance
+# dist_matrix <- vegdist(abundance_matrix, method = "bray")
+
+#################################################################
+#the participant who's been consistently taking SSRI
+df_60 <- cross.df %>%
+  filter(biome_id == 60)
+df_60_long <- df_60 %>%
+  select(logDate, lacto_rel_abundance_gut, lacto_rel_abundance_vag, CST) %>%
+  pivot_longer(cols = starts_with("lacto"), names_to = "Site", values_to = "Abundance")
+df_60_clean <- df_60_long %>%
+  filter(!is.na(logDate) & !is.na(Abundance) & is.finite(Abundance))
+cst_rects60 <- df_60_clean %>%
+  distinct(logDate, CST)
+ggplot(df_60_clean, aes(x = logDate, y = Abundance, color = Site, group = Site)) +
+  geom_tile(data = cst_rects41,
+            aes(x = logDate, y = 0, fill = CST),
+            width = 1, height = Inf, alpha = 0.2, inherit.aes = FALSE) +
+  geom_point(size = 2) +
+  geom_smooth(method = "loess", se = FALSE, linewidth = 1) +
+  labs(
+    title = "Lactobacillus Relative Abundance Over Time (Participant 60, SSRI)",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "Site",
+    fill = "CST"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(
+    values = c(
+      "I" = "#1b9e77",
+      "II" = "#d95f02",
+      "III" = "#7570b3",
+      "IV" = "#e7298a",
+      "V" = "#66a61e"
+    ),
+    na.value = "white"  # This goes outside the values list
+    
+  )
+
+################################################################
+#ssri and lacto
+ssri_users <- c(11,14,16,24,27,28,30,33,51,60,73)
+ssridf <- cross.df %>%
+  mutate(
+    SSRI_status = if_else(biome_id %in% ssri_users, "SSRI User", "Non-User")
+  )
+
+all_days <- seq.Date(as.Date("2022-10-13"), as.Date("2022-12-16"), by = "day")
+ssridf$study_day <- match(as.Date(ssridf$logDate), all_days) -1
+
+ssridf <- ssridf %>%
+  mutate(day_c = scale(study_day, center = TRUE, scale = FALSE))
+
+ggplot(ssridf, aes(x = logDate, y = lacto_rel_abundance_vag, color = SSRI_status)) +
+  geom_jitter(width = 0.5, height = 0, alpha = 0.6, size = 2) +
+  geom_smooth(se = FALSE, method = "loess") +
+  labs(
+    title = "Vaginal Lactobacillus Abundance Over Time",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "SSRI Use"
+  ) +
+  theme_minimal()
+
+ggplot(ssridf, aes(x = logDate, y = lacto_rel_abundance_gut, color = SSRI_status)) +
+  geom_jitter(width = 0.5, height = 0, alpha = 0.6, size = 2) +
+  geom_smooth(se = FALSE, method = "loess") +
+  labs(
+    title = "Gut Lactobacillus Abundance Over Time",
+    x = "Date",
+    y = "Relative Abundance",
+    color = "SSRI Use"
+  ) +
+  theme_minimal()
+
+################################################################
+ggplot(ssridf, aes(x = SSRI_status, y = Liners_rel_abundance_vag, fill = SSRI_status)) +
+  geom_boxplot(alpha = 0.6, outlier.shape = NA) +  # hide default outliers
+  geom_jitter(width = 0.15, size = 2, alpha = 0.7) +
+  labs(
+    title = "L.iners Relative Abundance by SSRI Use",
+    x = "SSRI Status",
+    y = "Abundance"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
 
 
 
