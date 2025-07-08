@@ -5,6 +5,13 @@ library(Matrix)
 library(readxl) 
 library(patchwork)
 library(vegan)
+library(ggforce)
+library(lme4) 
+library(lmerTest)
+library(performance)
+library(ggforce)
+#remotes::install_github("david-barnett/microViz")
+library(microViz)
 
 # #replicating Alice's code
 
@@ -86,6 +93,9 @@ bvulg_abund <- colSums(otu_table(GutData)[bvulg_asvs, , drop = FALSE])
 total_reads <- colSums(otu_table(GutData))
 bvulg_rel_abund <- bvulg_abund / total_reads
 
+#add total_reads to sample_data
+sample_data(GutData)$total_reads <- total_reads
+
 # Add relative abundance to sample_data
 sample_data(GutData)$gut_bvulg_rel_abundance <- bvulg_rel_abund
 
@@ -153,6 +163,42 @@ Liners_rel_abund_G <- Liners_abund_G / total_reads_G
 sample_data(GutData)$Liners_rel_abundance_gut <- Liners_rel_abund_G
 
 
+####################################################################################
+#check for vaginal samples in gut
+Gutsample <- data.frame(sample_data(GutData))
+suspicious <- Gutsample %>%
+    filter(str_detect(most_abundant_species, "Lactobacillus"))
+
+colnames(suspicious)
+
+dim(suspicious)
+
+#running PCA
+SuspiciousGut <- subset_samples(GutData, sample_names(GutData) %in% suspicious$SampleID)
+CombinedData <- merge_phyloseq(SuspiciousGut, VagData)
+sample_data(CombinedData)$Source <- ifelse(
+  sample_names(CombinedData) %in% sample_names(SuspiciousGut),
+  "SuspiciousGut", "Vagina"
+)
+CombinedData <- CombinedData %>% tax_fix()
+CombinedData <- CombinedData %>%
+  tax_fix(unknowns = c(
+    "acidifaciens", "anthropi", "asaccharolytica", "avium", "bacterium",
+    "beijerinckii", "buccalis", "caccae", "caecimuris", "denticola",
+    "epidermidis", "faecalis", "faecis", "faecium", "finegoldii",
+    "gilardii", "gordonii", "haemolyticus", "hominis", "ignava",
+    "intestinalis", "johnsonii", "koreensis", "lactis", "massiliense",
+    "massiliensis", "obesi", "oralis", "oris", "pneumoniae", "rhizophila",
+    "rhizosphaerae", "sanguinis", "shahii", "simulans", "soli", "sputigena",
+    "stercoris", "taiwanensis", "terrae", "timonensis", "urealyticum",
+    "vaginalis", "veronii", "vulgaris"
+  ))
+CombinedData %>%
+  tax_transform("clr") %>%  # No rank = ASV-level
+  ord_calc(method = "PCA") %>%
+  ord_plot(color = "Source", size = 2)
+
+
 ##############################################################
 # otu_df <- as.data.frame(otu_table(GutData))
 # tax_df <- as.data.frame(tax_table(GutData))
@@ -196,6 +242,9 @@ Lacto_asvs <- rownames(tax_df)[tax_df$Genus == "Lactobacillus"]
 Lacto_abund <- colSums(otu_table(VagData)[Lacto_asvs, , drop = FALSE])
 total_reads_V <- colSums(otu_table(VagData))
 Lacto_rel_abund <- Lacto_abund / total_reads_V
+
+#add total reads to sample data
+sample_data(VagData)$total_reads_V <- total_reads_V
 
 # Add relative abundance to sample_data
 sample_data(VagData)$lacto_rel_abundance_vag <- Lacto_rel_abund
@@ -1254,10 +1303,19 @@ ggplot(ssridf, aes(x = SSRI_status, y = Liners_rel_abundance_vag, fill = SSRI_st
   theme_minimal() +
   theme(legend.position = "none")
 
+ggplot(ssridf, aes(x = SSRI_status, y = Liners_rel_abundance_vag, color = SSRI_status)) +
+  geom_sina(alpha = 0.7, size = 2) +
+  stat_summary(fun = median, geom = "crossbar", width = 0.3, color = "black") +  # show median line
+  labs(
+    title = "L.iners Relative Abundance by SSRI Use",
+    x = "SSRI Status",
+    y = "Abundance"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
 
-
-
-
+ssri_liners <- lmer(Liners_rel_abundance_vag ~ SSRI_status + day_c + I(day_c^2) + (1| biome_id), data = ssridf)
+summary(ssri_liners)
 
 
 
