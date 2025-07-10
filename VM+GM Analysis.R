@@ -175,6 +175,7 @@ dim(suspicious)
 
 #running PCA
 SuspiciousGut <- subset_samples(GutData, sample_names(GutData) %in% suspicious$SampleID)
+Gut_subset <- subset_samples(GutData, !sample_names(GutData) %in% suspicious$SampleID)
 CombinedData <- merge_phyloseq(SuspiciousGut, VagData)
 sample_data(CombinedData)$Source <- ifelse(
   sample_names(CombinedData) %in% sample_names(SuspiciousGut),
@@ -198,6 +199,18 @@ CombinedData %>%
   ord_calc(method = "PCA") %>%
   ord_plot(color = "Source", size = 2)
 
+#PCA with other gut sample added
+sample_data(SuspiciousGut)$source_dataset <- "SuspiciousGut"
+sample_data(VagData)$source_dataset       <- "VagData"
+sample_data(Gut_subset)$source_dataset    <- "Gut_subset"
+CombinedData2 <- merge_phyloseq(SuspiciousGut, VagData, Gut_subset)
+CombinedData2 <- CombinedData2 %>% tax_fix()
+#by ASV level
+CombinedData2 %>%
+  tax_transform("clr") %>%
+  ord_calc(method = "PCA") %>%
+  ord_plot(color = "source_dataset", size = 2) +
+  theme_minimal()
 
 ##############################################################
 # otu_df <- as.data.frame(otu_table(GutData))
