@@ -12,6 +12,7 @@ library(performance)
 library(ggforce)
 #remotes::install_github("david-barnett/microViz")
 library(microViz)
+library(tibble)
 
 # #replicating Alice's code
 
@@ -157,17 +158,46 @@ sample_data(GutData)$staphy_rel_abundance_gut <- staphy_rel_abund_G
 staphyG <- tax_df_G %>% filter(Genus == "Staphylococcus")
 
 #add Lactobacillus iners
-Liners_asvs_G <- rownames(tax_df_G)[tax_df_G$Species == "iners"]
+Liners_asvs_G <- rownames(tax_df_G)[tax_df_G$Species_exact == "iners"]
 Liners_abund_G <- colSums(otu_table(GutData)[Liners_asvs_G, , drop = FALSE])
 Liners_rel_abund_G <- Liners_abund_G / total_reads_G
 sample_data(GutData)$Liners_rel_abundance_gut <- Liners_rel_abund_G
 
+#L.gasseri
+lgasseri_asvs_G <- rownames(tax_df_G)[tax_df_G$Species_exact == "gasseri"]
+lgasseri_abund_G <- colSums(otu_table(GutData)[lgasseri_asvs_G, , drop = FALSE])
+lgasseri_rel_abund_G <- lgasseri_abund_G / total_reads_G
+sample_data(GutData)$lgasseri_rel_abundance_gut <- lgasseri_rel_abund_G
+
+#L.crispatus
+lcrispatus_asvs_G <- rownames(tax_df_G)[tax_df_G$Species_exact == "crispatus"]
+lcrispatus_abund_G <- colSums(otu_table(GutData)[lcrispatus_asvs_G, , drop = FALSE])
+lcrispatus_rel_abund_G <- lcrispatus_abund_G / total_reads_G
+sample_data(GutData)$lcrispatus_rel_abundance_gut <- lcrispatus_rel_abund_G
+
+#L.jensenii
+ljensenii_asvs_G <- rownames(tax_df_G)[tax_df_G$Species_exact == "jensenii"]
+ljensenii_abund_G <- colSums(otu_table(GutData)[ljensenii_asvs_G, , drop = FALSE])
+ljensenii_rel_abund_G <- ljensenii_abund_G / total_reads_G
+sample_data(GutData)$ljensenii_rel_abundance_gut <- ljensenii_rel_abund_G
+
+
+#Shannon
+shannon_dfG <- estimate_richness(GutData, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID")
+meta_dfG <- sample_data(GutData) %>%
+  data.frame()
+merged_dfG <- left_join(meta_dfG, shannon_dfG, by = "SampleID")
+sample_data(GutData) <- merged_dfG %>%
+  column_to_rownames(var = "SampleID") %>%
+  sample_data()
 
 ####################################################################################
 #check for vaginal samples in gut
 Gutsample <- data.frame(sample_data(GutData))
 suspicious <- Gutsample %>%
-    filter(str_detect(most_abundant_species, "Lactobacillus"))
+    filter(str_detect(most_abundant_species, "Lactobacillus")) %>%
+    rownames_to_column(var = "SampleID")
 
 colnames(suspicious)
 
@@ -312,19 +342,51 @@ table(staphyG$Species)
 table(staphy$Species)
 
 #add L.iners
-Liners_asvs_V <- rownames(tax_df)[tax_df$Species == "iners"] 
+Liners_asvs_V <- rownames(tax_df)[tax_df$Species_exact == "iners"] 
 Liners_abund_V <- colSums(otu_table(VagData)[Liners_asvs_V, , drop = FALSE])
 Liners_rel_abund_V <- Liners_abund_V / total_reads_V
 sample_data(VagData)$Liners_rel_abundance_vag <- Liners_rel_abund_V
 
+#L.gasseri
+lgasseri_asvs_V <- rownames(tax_df)[tax_df$Species_exact == "gasseri"]
+lgasseri_abund_V <- colSums(otu_table(VagData)[lgasseri_asvs_V, , drop = FALSE])
+lgasseri_rel_abund_V <- lgasseri_abund_V / total_reads_V
+sample_data(VagData)$lgasseri_rel_abundance_vag <- lgasseri_rel_abund_V
 
+#L.crispatus
+lcrispatus_asvs_V <- rownames(tax_df)[tax_df$Species_exact == "crispatus"]
+lcrispatus_abund_V <- colSums(otu_table(VagData)[lcrispatus_asvs_V, , drop = FALSE])
+lcrispatus_rel_abund_V <- lcrispatus_abund_V / total_reads_V
+sample_data(VagData)$lcrispatus_rel_abundance_vag <- lcrispatus_rel_abund_V
+
+#L.jensenii
+ljensenii_asvs_V <- rownames(tax_df)[tax_df$Species_exact == "jensenii"]
+ljensenii_abund_V <- colSums(otu_table(VagData)[ljensenii_asvs_V, , drop = FALSE])
+ljensenii_rel_abund_V <- ljensenii_abund_V / total_reads_V
+sample_data(VagData)$ljensenii_rel_abundance_vag <- ljensenii_rel_abund_V
+
+
+#add Shannon
+shannon_dfV <- estimate_richness(VagData, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID")
+meta_dfV <- sample_data(VagData) %>%
+  data.frame()
+merged_dfV <- left_join(meta_dfV, shannon_dfV, by = "SampleID")
+sample_data(VagData) <- merged_dfV %>%
+  column_to_rownames(var = "SampleID") %>%
+  sample_data()
+colnames(sample_data(VagData))[colnames(sample_data(VagData)) == "Shannon"] <- "micro_Shannon_vag"
 
 
 ########################################################################
 #matching these sample data of gut and vaginal data
 
 GutforMatch <- data.frame(sample_data(GutData))
+GutforMatch$SampleID <- rownames(sample_data(GutData))
+sample_data(GutData) <- sample_data(GutforMatch)
 VagforMatch <- data.frame(sample_data(VagData))
+VagforMatch$SampleID <- rownames(sample_data(VagData))
+sample_data(VagData) <- sample_data(VagforMatch)
 
 GutforMatch_trimmed <- GutforMatch %>%
   group_by(biome_id, logDate) %>%
@@ -1331,9 +1393,26 @@ ssri_liners <- lmer(Liners_rel_abundance_vag ~ SSRI_status + day_c + I(day_c^2) 
 summary(ssri_liners)
 
 
+#################################################################################
+#PCA of Vag Sample Microbiome by SSRI
+Vsample_df <- data.frame(sample_data(VagData))
+Vsample_df$SSRI_status <- ifelse(Vsample_df$biome_id %in% ssri_users, "SSRI", "non-SSRI")
+sample_data(VagData) <- sample_data(Vsample_df)
+ord_plot(VagData %>% 
+           tax_transform("clr") %>%
+           ord_calc("PCA"), 
+         color = "SSRI_status", size = 2) +
+  theme_minimal()
 
-
-
+#Gut Sample
+Gsample_df <- data.frame(sample_data(GutData))
+Gsample_df$SSRI_status <- ifelse(Gsample_df$biome_id %in% ssri_users, "SSRI", "non-SSRI")
+sample_data(GutData) <- sample_data(Gsample_df)
+ord_plot(GutData %>% 
+           tax_transform("clr") %>%
+           ord_calc("PCA"), 
+         color = "SSRI_status", size = 2) +
+  theme_minimal()
 
 
 
