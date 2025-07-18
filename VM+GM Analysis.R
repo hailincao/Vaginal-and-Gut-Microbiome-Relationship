@@ -191,6 +191,8 @@ merged_dfG <- left_join(meta_dfG, shannon_dfG, by = "SampleID")
 sample_data(GutData) <- merged_dfG %>%
   column_to_rownames(var = "SampleID") %>%
   sample_data()
+colnames(sample_data(GutData))[colnames(sample_data(GutData)) == "Shannon"] <- "micro_Shannon_gut"
+
 
 ####################################################################################
 #check for vaginal samples in gut
@@ -1412,11 +1414,86 @@ ord_plot(GutData %>%
            tax_transform("clr") %>%
            ord_calc("PCA"), 
          color = "SSRI_status", size = 2) +
+  stat_ellipse(aes(color = SSRI_status), type = "norm", size = 0.6, linetype = "dashed")
   theme_minimal()
 
+######################################################################
+#with menses
+menses_df <- read.csv("/Users/caoyang/Desktop/Tetel Lab/datasets/imputed_menstruation_data_3_11.csv")
+menses_df <- menses_df %>% 
+    rename_with(~gsub("X2022.", "2022.", .), starts_with("X2022.")) %>% 
+    rename_with(~gsub("\\.", "-", .))
+  
+menses_df_long <- menses_df %>% 
+    pivot_longer(cols=starts_with("2022-"), names_to="logDate", values_to="menses_status")
+menses_df_long$logDate <- as.Date(menses_df_long$logDate)
+menses_df_long$biome_id <- as.character(menses_df_long$biome_id)
+ssridf$biome_id <- as.character(ssridf$biome_id)
+ssridf$logDate <- as.Date(ssridf$logDate)
+ssridf_menses <- ssridf %>% 
+left_join(menses_df_long, by=c("biome_id", "logDate"))
+
+base_names <- gsub("\\.x$|\\.y$", "", colnames(ssridf_menses))
+duplicated_names <- base_names[duplicated(base_names)]
+duplicated_names
+
+colnames(ssridf_menses)[endsWith(colnames(ssridf_menses), ".y")]
+ssridf_menses <- ssridf_menses %>%
+  select(-ends_with(".y")) 
+names(ssridf_menses) <- gsub("\\.x$", "", names(ssridf_menses))
+
+ssridf_menses <- ssridf_menses %>% 
+  mutate(menses_day = ifelse(menses_status %in% c(1,2,3,7,9,78), "menses", 
+                             ifelse(menses_status %in% c(4,5,6,10), "not_menses", NA)))
+
+boxplot_menses_df <- ssridf_menses %>%
+  filter(!is.na(menses_day)) %>%  # Remove NA menses upfront
+  mutate(
+    menses_label = case_when(
+      menses_day == "menses" ~ "On Menses",
+      menses_day == "not_menses" ~ "Not on Menses"
+    ),
+    group = paste(SSRI_status, menses_label, sep = " - ")
+  )
 
 
+ggplot(boxplot_menses_df, aes(x = group, y = micro_Shannon_vag, fill = group)) +
+  geom_boxplot(outlier.shape = NA, width = 0.7, alpha = 0.5) +
+  geom_jitter(aes(color = group),
+              position = position_jitter(width = 0.2),
+              size = 1.5, alpha = 0.6) +
+  labs(
+    x = "Group",
+    y = "Vaginal Micro Shannon Diversity",
+    fill = "Group",
+    color = "Group"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1))
 
+ssri_menses_shannon <- lmer(micro_Shannon_vag ~ SSRI_status * menses_day + (1 | biome_id), data = ssridf_menses)
+summary(ssri_menses_shannon)
+
+ssri_menses_shannon <- lmer(micro_Shannon_vag ~ SSRI_status * menses_day + (1 | biome_id), data = ssridf_menses)
+summary(ssri_menses_shannon)
+
+ggplot(boxplot_menses_df, aes(x = group, y = micro_Shannon_gut, fill = group)) +
+  geom_boxplot(outlier.shape = NA, width = 0.7, alpha = 0.5) +
+  geom_jitter(aes(color = group),
+              position = position_jitter(width = 0.2),
+              size = 1.5, alpha = 0.6) +
+  labs(
+    x = "Group",
+    y = "Gut Micro Shannon Diversity",
+    fill = "Group",
+    color = "Group"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 20, hjust = 1))
+
+
+ssri_menses_shannon_gut <- lmer(micro_Shannon_gut ~ SSRI_status * menses_day + (1 | biome_id), data = ssridf_menses)
+summary(ssri_menses_shannon_gut)
 
 
 
